@@ -1,0 +1,475 @@
+SET
+=== Индексы в БД сервиса
+    tablename     |            indexname            |                                             indexdef                                             
+------------------+---------------------------------+--------------------------------------------------------------------------------------------------
+ api_keys         | api_keys_key_hash_key           | CREATE UNIQUE INDEX api_keys_key_hash_key ON public.api_keys USING btree (key_hash)
+ api_keys         | api_keys_pkey                   | CREATE UNIQUE INDEX api_keys_pkey ON public.api_keys USING btree (id)
+ api_keys         | idx_api_keys_key_hash           | CREATE INDEX idx_api_keys_key_hash ON public.api_keys USING btree (key_hash)
+ idempotency_keys | idempotency_keys_key_key        | CREATE UNIQUE INDEX idempotency_keys_key_key ON public.idempotency_keys USING btree (key)
+ idempotency_keys | idempotency_keys_pkey           | CREATE UNIQUE INDEX idempotency_keys_pkey ON public.idempotency_keys USING btree (id)
+ idempotency_keys | idx_idempotency_keys_expires_at | CREATE INDEX idx_idempotency_keys_expires_at ON public.idempotency_keys USING btree (expires_at)
+ idempotency_keys | idx_idempotency_keys_key        | CREATE INDEX idx_idempotency_keys_key ON public.idempotency_keys USING btree (key)
+ projects         | idx_projects_name               | CREATE INDEX idx_projects_name ON public.projects USING btree (name)
+ projects         | projects_pkey                   | CREATE UNIQUE INDEX projects_pkey ON public.projects USING btree (id)
+ tags             | idx_tags_name                   | CREATE INDEX idx_tags_name ON public.tags USING btree (name)
+ tags             | tags_name_key                   | CREATE UNIQUE INDEX tags_name_key ON public.tags USING btree (name)
+ tags             | tags_pkey                       | CREATE UNIQUE INDEX tags_pkey ON public.tags USING btree (id)
+ task_tags        | idx_task_tags_tag_id            | CREATE INDEX idx_task_tags_tag_id ON public.task_tags USING btree (tag_id)
+ task_tags        | idx_task_tags_task_id           | CREATE INDEX idx_task_tags_task_id ON public.task_tags USING btree (task_id)
+ task_tags        | pk_task_tags                    | CREATE UNIQUE INDEX pk_task_tags ON public.task_tags USING btree (task_id, tag_id)
+ tasks            | idx_tasks_due_date              | CREATE INDEX idx_tasks_due_date ON public.tasks USING btree (due_date)
+ tasks            | idx_tasks_priority              | CREATE INDEX idx_tasks_priority ON public.tasks USING btree (priority)
+ tasks            | idx_tasks_project_id            | CREATE INDEX idx_tasks_project_id ON public.tasks USING btree (project_id)
+ tasks            | idx_tasks_status                | CREATE INDEX idx_tasks_status ON public.tasks USING btree (status)
+ tasks            | idx_tasks_user_id               | CREATE INDEX idx_tasks_user_id ON public.tasks USING btree (user_id)
+ tasks            | tasks_pkey                      | CREATE UNIQUE INDEX tasks_pkey ON public.tasks USING btree (id)
+ user_projects    | idx_user_projects_project_id    | CREATE INDEX idx_user_projects_project_id ON public.user_projects USING btree (project_id)
+ user_projects    | idx_user_projects_user_id       | CREATE INDEX idx_user_projects_user_id ON public.user_projects USING btree (user_id)
+ user_projects    | pk_user_projects                | CREATE UNIQUE INDEX pk_user_projects ON public.user_projects USING btree (user_id, project_id)
+ users            | idx_users_email                 | CREATE INDEX idx_users_email ON public.users USING btree (email)
+ users            | idx_users_username              | CREATE INDEX idx_users_username ON public.users USING btree (username)
+ users            | users_email_key                 | CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email)
+ users            | users_pkey                      | CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)
+ users            | users_username_key              | CREATE UNIQUE INDEX users_username_key ON public.users USING btree (username)
+(29 rows)
+
+=== Селективность
+ total_tasks | power_user_tasks | typical_user_tasks | power_user_inprogress_high | pending_tasks 
+-------------+------------------+--------------------+----------------------------+---------------
+     1000000 |            10041 |                 68 |                        414 |        200659
+(1 row)
+
+PREPARE
+PREPARE
+PREPARE
+PREPARE
+PREPARE
+PREPARE
+PREPARE
+=== Query 1. count(*) WHERE user_id — gen_user_1
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Aggregate  (cost=249.09..249.10 rows=1 width=4)
+   ->  Index Only Scan using idx_tasks_user_id on tasks t  (cost=0.42..224.00 rows=10033 width=0)
+         Index Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+(3 rows)
+
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=249.09..249.10 rows=1 width=4) (actual time=1.033..1.034 rows=1 loops=1)
+   Buffers: shared hit=11
+   ->  Index Only Scan using idx_tasks_user_id on tasks t  (cost=0.42..224.00 rows=10033 width=0) (actual time=0.030..0.587 rows=10041 loops=1)
+         Index Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+         Heap Fetches: 0
+         Buffers: shared hit=11
+ Planning Time: 0.080 ms
+ Execution Time: 1.082 ms
+(8 rows)
+
+=== Query 2. count(*) WHERE user_id AND status AND priority — gen_user_1, InProgress, High
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=6126.50..6126.51 rows=1 width=4)
+   ->  Bitmap Heap Scan on tasks t  (cost=4591.35..6125.40 rows=438 width=0)
+         Recheck Cond: ((user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid) AND (status = 1) AND (priority = 2))
+         ->  BitmapAnd  (cost=4591.35..4591.35 rows=438 width=0)
+               ->  Bitmap Index Scan on idx_tasks_user_id  (cost=0.00..123.67 rows=10033 width=0)
+                     Index Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+               ->  Bitmap Index Scan on idx_tasks_status  (cost=0.00..2142.18 rows=200767 width=0)
+                     Index Cond: (status = 1)
+               ->  Bitmap Index Scan on idx_tasks_priority  (cost=0.00..2324.67 rows=217633 width=0)
+                     Index Cond: (priority = 2)
+(10 rows)
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=6126.50..6126.51 rows=1 width=4) (actual time=12.683..12.686 rows=1 loops=1)
+   Buffers: shared hit=501
+   ->  Bitmap Heap Scan on tasks t  (cost=4591.35..6125.40 rows=438 width=0) (actual time=12.501..12.661 rows=414 loops=1)
+         Recheck Cond: ((user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid) AND (status = 1) AND (priority = 2))
+         Heap Blocks: exact=157
+         Buffers: shared hit=501
+         ->  BitmapAnd  (cost=4591.35..4591.35 rows=438 width=0) (actual time=12.476..12.478 rows=0 loops=1)
+               Buffers: shared hit=344
+               ->  Bitmap Index Scan on idx_tasks_user_id  (cost=0.00..123.67 rows=10033 width=0) (actual time=0.143..0.143 rows=10041 loops=1)
+                     Index Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+                     Buffers: shared hit=10
+               ->  Bitmap Index Scan on idx_tasks_status  (cost=0.00..2142.18 rows=200767 width=0) (actual time=5.623..5.623 rows=199515 loops=1)
+                     Index Cond: (status = 1)
+                     Buffers: shared hit=159
+               ->  Bitmap Index Scan on idx_tasks_priority  (cost=0.00..2324.67 rows=217633 width=0) (actual time=6.508..6.508 rows=220218 loops=1)
+                     Index Cond: (priority = 2)
+                     Buffers: shared hit=175
+ Planning Time: 0.090 ms
+ Execution Time: 12.787 ms
+(19 rows)
+
+=== Query 3. Страница задач пользователя — gen_user_1 (10 041 задача)
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=15935.68..16029.97 rows=14 width=265)
+   Sort Key: t.created_at DESC, t.id, p.id, t2.task_id, t2.tag_id
+   Presorted Key: t.created_at
+   ->  Nested Loop Left Join  (cost=15925.25..16029.48 rows=14 width=265)
+         ->  Nested Loop Left Join  (cost=15924.69..15983.37 rows=10 width=191)
+               ->  Limit  (cost=15924.41..15924.44 rows=10 width=126)
+                     ->  Sort  (cost=15924.41..15949.49 rows=10033 width=126)
+                           Sort Key: t.created_at DESC
+                           ->  Bitmap Heap Scan on tasks t  (cost=126.18..15707.60 rows=10033 width=126)
+                                 Recheck Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+                                 ->  Bitmap Index Scan on idx_tasks_user_id  (cost=0.00..123.67 rows=10033 width=0)
+                                       Index Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+               ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65)
+                     Index Cond: (id = t.project_id)
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74)
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32)
+                     Index Cond: (task_id = t.id)
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42)
+                     Index Cond: (id = t2.tag_id)
+(19 rows)
+
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=15935.68..16029.97 rows=14 width=265) (actual time=3.648..3.651 rows=10 loops=1)
+   Sort Key: t.created_at DESC, t.id, p.id, t2.task_id, t2.tag_id
+   Presorted Key: t.created_at
+   Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+   Buffers: shared hit=248
+   ->  Nested Loop Left Join  (cost=15925.25..16029.48 rows=14 width=265) (actual time=3.563..3.629 rows=10 loops=1)
+         Buffers: shared hit=248
+         ->  Nested Loop Left Join  (cost=15924.69..15983.37 rows=10 width=191) (actual time=3.547..3.566 rows=10 loops=1)
+               Buffers: shared hit=205
+               ->  Limit  (cost=15924.41..15924.44 rows=10 width=126) (actual time=3.515..3.518 rows=10 loops=1)
+                     Buffers: shared hit=184
+                     ->  Sort  (cost=15924.41..15949.49 rows=10033 width=126) (actual time=3.514..3.516 rows=10 loops=1)
+                           Sort Key: t.created_at DESC
+                           Sort Method: top-N heapsort  Memory: 27kB
+                           Buffers: shared hit=184
+                           ->  Bitmap Heap Scan on tasks t  (cost=126.18..15707.60 rows=10033 width=126) (actual time=0.204..1.591 rows=10041 loops=1)
+                                 Recheck Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+                                 Heap Blocks: exact=174
+                                 Buffers: shared hit=184
+                                 ->  Bitmap Index Scan on idx_tasks_user_id  (cost=0.00..123.67 rows=10033 width=0) (actual time=0.181..0.181 rows=10041 loops=1)
+                                       Index Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+                                       Buffers: shared hit=10
+               ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65) (actual time=0.004..0.004 rows=1 loops=10)
+                     Index Cond: (id = t.project_id)
+                     Buffers: shared hit=21
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74) (actual time=0.006..0.006 rows=1 loops=10)
+               Buffers: shared hit=43
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32) (actual time=0.004..0.004 rows=1 loops=10)
+                     Index Cond: (task_id = t.id)
+                     Heap Fetches: 0
+                     Buffers: shared hit=31
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.003..0.003 rows=1 loops=6)
+                     Index Cond: (id = t2.tag_id)
+                     Buffers: shared hit=12
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.815 ms
+ Execution Time: 3.820 ms
+(38 rows)
+
+=== Query 3. Страница задач пользователя — gen_user_5000 (типичный, ~70 задач)
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=440.62..440.66 rows=14 width=265) (actual time=0.326..0.328 rows=14 loops=1)
+   Sort Key: t.created_at DESC, t.id, p.id, t2.task_id, t2.tag_id
+   Sort Method: quicksort  Memory: 28kB
+   Buffers: shared hit=73
+   ->  Nested Loop Left Join  (cost=367.99..440.36 rows=14 width=265) (actual time=0.109..0.275 rows=14 loops=1)
+         Buffers: shared hit=73
+         ->  Hash Right Join  (cost=367.42..394.25 rows=10 width=191) (actual time=0.093..0.214 rows=10 loops=1)
+               Hash Cond: (p.id = t.project_id)
+               Buffers: shared hit=18
+               ->  Seq Scan on projects p  (cost=0.00..23.00 rows=1000 width=65) (actual time=0.003..0.059 rows=1000 loops=1)
+                     Buffers: shared hit=13
+               ->  Hash  (cost=367.30..367.30 rows=10 width=126) (actual time=0.077..0.078 rows=10 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                     Buffers: shared hit=5
+                     ->  Limit  (cost=367.27..367.30 rows=10 width=126) (actual time=0.068..0.070 rows=10 loops=1)
+                           Buffers: shared hit=5
+                           ->  Sort  (cost=367.27..367.51 rows=95 width=126) (actual time=0.068..0.068 rows=10 loops=1)
+                                 Sort Key: t.created_at DESC
+                                 Sort Method: top-N heapsort  Memory: 28kB
+                                 Buffers: shared hit=5
+                                 ->  Bitmap Heap Scan on tasks t  (cost=5.16..365.22 rows=95 width=126) (actual time=0.024..0.035 rows=68 loops=1)
+                                       Recheck Cond: (user_id = '0cce6e13-904a-4ab5-9785-2fe444858bd2'::uuid)
+                                       Heap Blocks: exact=2
+                                       Buffers: shared hit=5
+                                       ->  Bitmap Index Scan on idx_tasks_user_id  (cost=0.00..5.14 rows=95 width=0) (actual time=0.015..0.015 rows=68 loops=1)
+                                             Index Cond: (user_id = '0cce6e13-904a-4ab5-9785-2fe444858bd2'::uuid)
+                                             Buffers: shared hit=3
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74) (actual time=0.005..0.005 rows=1 loops=10)
+               Buffers: shared hit=55
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32) (actual time=0.003..0.003 rows=1 loops=10)
+                     Index Cond: (task_id = t.id)
+                     Heap Fetches: 0
+                     Buffers: shared hit=31
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.001..0.001 rows=1 loops=12)
+                     Index Cond: (id = t2.tag_id)
+                     Buffers: shared hit=24
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.775 ms
+ Execution Time: 0.515 ms
+(40 rows)
+
+=== Query 3. Далёкая страница gen_user_1: OFFSET 5000
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=16398.10..16492.38 rows=14 width=265) (actual time=7.410..7.414 rows=11 loops=1)
+   Sort Key: t.created_at DESC, t.id, p.id, t2.task_id, t2.tag_id
+   Presorted Key: t.created_at
+   Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+   Buffers: shared hit=255
+   ->  Nested Loop Left Join  (cost=16387.66..16491.89 rows=14 width=265) (actual time=7.333..7.391 rows=11 loops=1)
+         Buffers: shared hit=255
+         ->  Nested Loop Left Join  (cost=16387.10..16445.78 rows=10 width=191) (actual time=7.295..7.316 rows=10 loops=1)
+               Buffers: shared hit=208
+               ->  Limit  (cost=16386.82..16386.85 rows=10 width=126) (actual time=7.250..7.253 rows=10 loops=1)
+                     Buffers: shared hit=184
+                     ->  Sort  (cost=16374.32..16399.41 rows=10033 width=126) (actual time=6.507..7.097 rows=5010 loops=1)
+                           Sort Key: t.created_at DESC
+                           Sort Method: top-N heapsort  Memory: 2042kB
+                           Buffers: shared hit=184
+                           ->  Bitmap Heap Scan on tasks t  (cost=126.18..15707.60 rows=10033 width=126) (actual time=0.155..1.815 rows=10041 loops=1)
+                                 Recheck Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+                                 Heap Blocks: exact=174
+                                 Buffers: shared hit=184
+                                 ->  Bitmap Index Scan on idx_tasks_user_id  (cost=0.00..123.67 rows=10033 width=0) (actual time=0.134..0.135 rows=10041 loops=1)
+                                       Index Cond: (user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid)
+                                       Buffers: shared hit=10
+               ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65) (actual time=0.005..0.005 rows=1 loops=10)
+                     Index Cond: (id = t.project_id)
+                     Buffers: shared hit=24
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74) (actual time=0.007..0.007 rows=1 loops=10)
+               Buffers: shared hit=47
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32) (actual time=0.004..0.005 rows=1 loops=10)
+                     Index Cond: (task_id = t.id)
+                     Heap Fetches: 0
+                     Buffers: shared hit=31
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.002..0.002 rows=1 loops=8)
+                     Index Cond: (id = t2.tag_id)
+                     Buffers: shared hit=16
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.698 ms
+ Execution Time: 7.750 ms
+(38 rows)
+
+=== Query 3b. Страница всех задач (Admin)
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=31472.66..31642.44 rows=14 width=385)
+   Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+   Presorted Key: t.created_at
+   ->  Nested Loop Left Join  (cost=31453.84..31641.95 rows=14 width=385)
+         ->  Nested Loop  (cost=31453.27..31595.84 rows=10 width=311)
+               ->  Nested Loop Left Join  (cost=31452.99..31512.82 rows=10 width=191)
+                     ->  Limit  (cost=31452.71..31453.88 rows=10 width=126)
+                           ->  Gather Merge  (cost=31452.71..128681.80 rows=833334 width=126)
+                                 Workers Planned: 2
+                                 ->  Sort  (cost=30452.69..31494.36 rows=416667 width=126)
+                                       Sort Key: t.created_at DESC
+                                       ->  Parallel Seq Scan on tasks t  (cost=0.00..21448.67 rows=416667 width=126)
+                     ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65)
+                           Index Cond: (id = t.project_id)
+               ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120)
+                     Index Cond: (id = t.user_id)
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74)
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32)
+                     Index Cond: (task_id = t.id)
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42)
+                     Index Cond: (id = t2.tag_id)
+(21 rows)
+
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=31472.66..31642.44 rows=14 width=385) (actual time=114.434..118.239 rows=12 loops=1)
+   Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+   Presorted Key: t.created_at
+   Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 29kB  Peak Memory: 29kB
+   Buffers: shared hit=14879 read=2572
+   ->  Nested Loop Left Join  (cost=31453.84..31641.95 rows=14 width=385) (actual time=114.316..118.213 rows=12 loops=1)
+         Buffers: shared hit=14879 read=2572
+         ->  Nested Loop  (cost=31453.27..31595.84 rows=10 width=311) (actual time=114.270..118.117 rows=10 loops=1)
+               Buffers: shared hit=14832 read=2572
+               ->  Nested Loop Left Join  (cost=31452.99..31512.82 rows=10 width=191) (actual time=114.256..118.075 rows=10 loops=1)
+                     Buffers: shared hit=14802 read=2572
+                     ->  Limit  (cost=31452.71..31453.88 rows=10 width=126) (actual time=114.217..118.018 rows=10 loops=1)
+                           Buffers: shared hit=14784 read=2572
+                           ->  Gather Merge  (cost=31452.71..128681.80 rows=833334 width=126) (actual time=114.215..118.014 rows=10 loops=1)
+                                 Workers Planned: 2
+                                 Workers Launched: 2
+                                 Buffers: shared hit=14784 read=2572
+                                 ->  Sort  (cost=30452.69..31494.36 rows=416667 width=126) (actual time=111.238..111.240 rows=7 loops=3)
+                                       Sort Key: t.created_at DESC
+                                       Sort Method: top-N heapsort  Memory: 28kB
+                                       Buffers: shared hit=14784 read=2572
+                                       Worker 0:  Sort Method: top-N heapsort  Memory: 28kB
+                                       Worker 1:  Sort Method: top-N heapsort  Memory: 28kB
+                                       ->  Parallel Seq Scan on tasks t  (cost=0.00..21448.67 rows=416667 width=126) (actual time=0.022..48.112 rows=333333 loops=3)
+                                             Buffers: shared hit=14710 read=2572
+                     ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65) (actual time=0.004..0.004 rows=1 loops=10)
+                           Index Cond: (id = t.project_id)
+                           Buffers: shared hit=18
+               ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.003..0.003 rows=1 loops=10)
+                     Index Cond: (id = t.user_id)
+                     Buffers: shared hit=30
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74) (actual time=0.007..0.009 rows=1 loops=10)
+               Buffers: shared hit=47
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32) (actual time=0.006..0.007 rows=1 loops=10)
+                     Index Cond: (task_id = t.id)
+                     Heap Fetches: 0
+                     Buffers: shared hit=31
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.001..0.001 rows=1 loops=8)
+                     Index Cond: (id = t2.tag_id)
+                     Buffers: shared hit=16
+ Planning:
+   Buffers: shared hit=24
+ Planning Time: 1.227 ms
+ Execution Time: 118.413 ms
+(44 rows)
+
+=== Query 3c. Страница всех задач со status = Pending (Admin)
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=23331.59..23501.37 rows=14 width=385)
+   Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+   Presorted Key: t.created_at
+   ->  Nested Loop Left Join  (cost=23312.77..23500.88 rows=14 width=385)
+         ->  Nested Loop  (cost=23312.20..23454.77 rows=10 width=311)
+               ->  Nested Loop Left Join  (cost=23311.92..23371.74 rows=10 width=191)
+                     ->  Limit  (cost=23311.64..23312.81 rows=10 width=126)
+                           ->  Gather Merge  (cost=23311.64..42760.63 rows=166694 width=126)
+                                 Workers Planned: 2
+                                 ->  Sort  (cost=22311.62..22519.99 rows=83347 width=126)
+                                       Sort Key: t.created_at DESC
+                                       ->  Parallel Bitmap Heap Scan on tasks t  (cost=2186.68..20510.52 rows=83347 width=126)
+                                             Recheck Cond: (status = 0)
+                                             ->  Bitmap Index Scan on idx_tasks_status  (cost=0.00..2136.67 rows=200033 width=0)
+                                                   Index Cond: (status = 0)
+                     ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65)
+                           Index Cond: (id = t.project_id)
+               ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120)
+                     Index Cond: (id = t.user_id)
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74)
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32)
+                     Index Cond: (task_id = t.id)
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42)
+                     Index Cond: (id = t2.tag_id)
+(24 rows)
+
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Incremental Sort  (cost=23331.59..23501.37 rows=14 width=385) (actual time=67.787..71.088 rows=11 loops=1)
+   Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+   Presorted Key: t.created_at
+   Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 29kB  Peak Memory: 29kB
+   Buffers: shared hit=4221 read=13336
+   ->  Nested Loop Left Join  (cost=23312.77..23500.88 rows=14 width=385) (actual time=67.623..71.043 rows=11 loops=1)
+         Buffers: shared hit=4221 read=13336
+         ->  Nested Loop  (cost=23312.20..23454.77 rows=10 width=311) (actual time=67.600..70.962 rows=10 loops=1)
+               Buffers: shared hit=4179 read=13335
+               ->  Nested Loop Left Join  (cost=23311.92..23371.74 rows=10 width=191) (actual time=67.581..70.905 rows=10 loops=1)
+                     Buffers: shared hit=4151 read=13333
+                     ->  Limit  (cost=23311.64..23312.81 rows=10 width=126) (actual time=67.539..70.840 rows=10 loops=1)
+                           Buffers: shared hit=4125 read=13332
+                           ->  Gather Merge  (cost=23311.64..42760.63 rows=166694 width=126) (actual time=67.537..70.836 rows=10 loops=1)
+                                 Workers Planned: 2
+                                 Workers Launched: 2
+                                 Buffers: shared hit=4125 read=13332
+                                 ->  Sort  (cost=22311.62..22519.99 rows=83347 width=126) (actual time=63.928..63.930 rows=8 loops=3)
+                                       Sort Key: t.created_at DESC
+                                       Sort Method: top-N heapsort  Memory: 28kB
+                                       Buffers: shared hit=4125 read=13332
+                                       Worker 0:  Sort Method: top-N heapsort  Memory: 28kB
+                                       Worker 1:  Sort Method: top-N heapsort  Memory: 28kB
+                                       ->  Parallel Bitmap Heap Scan on tasks t  (cost=2186.68..20510.52 rows=83347 width=126) (actual time=7.716..49.709 rows=66886 loops=3)
+                                             Recheck Cond: (status = 0)
+                                             Heap Blocks: exact=6381
+                                             Buffers: shared hit=4109 read=13332
+                                             ->  Bitmap Index Scan on idx_tasks_status  (cost=0.00..2136.67 rows=200033 width=0) (actual time=8.137..8.138 rows=200659 loops=1)
+                                                   Index Cond: (status = 0)
+                                                   Buffers: shared hit=2 read=157
+                     ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65) (actual time=0.005..0.005 rows=1 loops=10)
+                           Index Cond: (id = t.project_id)
+                           Buffers: shared hit=26 read=1
+               ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.005..0.005 rows=1 loops=10)
+                     Index Cond: (id = t.user_id)
+                     Buffers: shared hit=28 read=2
+         ->  Nested Loop  (cost=0.56..4.60 rows=1 width=74) (actual time=0.007..0.007 rows=1 loops=10)
+               Buffers: shared hit=42 read=1
+               ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.42..4.44 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=10)
+                     Index Cond: (task_id = t.id)
+                     Heap Fetches: 0
+                     Buffers: shared hit=30 read=1
+               ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.002..0.002 rows=1 loops=6)
+                     Index Cond: (id = t2.tag_id)
+                     Buffers: shared hit=12
+ Planning:
+   Buffers: shared hit=24
+ Planning Time: 0.824 ms
+ Execution Time: 71.256 ms
+(49 rows)
+
+=== Query 4. Статистика по статусам (Admin, GROUP BY)
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Finalize GroupAggregate  (cost=27657.11..27658.16 rows=4 width=12)
+   Group Key: status
+   ->  Gather Merge  (cost=27657.11..27658.04 rows=8 width=20)
+         Workers Planned: 2
+         ->  Sort  (cost=26657.08..26657.09 rows=4 width=20)
+               Sort Key: status
+               ->  Partial HashAggregate  (cost=26657.00..26657.04 rows=4 width=20)
+                     Group Key: status
+                     ->  Parallel Seq Scan on tasks t  (cost=0.00..21448.67 rows=416667 width=12)
+(9 rows)
+
+                                                                    QUERY PLAN                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize GroupAggregate  (cost=27657.11..27658.16 rows=4 width=12) (actual time=80.726..84.193 rows=4 loops=1)
+   Group Key: status
+   Buffers: shared hit=15943 read=1353
+   ->  Gather Merge  (cost=27657.11..27658.04 rows=8 width=20) (actual time=80.706..84.181 rows=12 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=15943 read=1353
+         ->  Sort  (cost=26657.08..26657.09 rows=4 width=20) (actual time=76.930..76.941 rows=4 loops=3)
+               Sort Key: status
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=15943 read=1353
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Partial HashAggregate  (cost=26657.00..26657.04 rows=4 width=20) (actual time=76.877..76.878 rows=4 loops=3)
+                     Group Key: status
+                     Batches: 1  Memory Usage: 24kB
+                     Buffers: shared hit=15929 read=1353
+                     Worker 0:  Batches: 1  Memory Usage: 24kB
+                     Worker 1:  Batches: 1  Memory Usage: 24kB
+                     ->  Parallel Seq Scan on tasks t  (cost=0.00..21448.67 rows=416667 width=12) (actual time=0.016..22.664 rows=333333 loops=3)
+                           Buffers: shared hit=15929 read=1353
+ Planning Time: 0.098 ms
+ Execution Time: 84.274 ms
+(23 rows)
+
+=== Query 5. count(*) всех задач (Admin)
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=14372.97..14372.99 rows=1 width=4) (actual time=38.676..41.487 rows=1 loops=1)
+   Buffers: shared hit=790
+   ->  Gather  (cost=14372.76..14372.97 rows=2 width=8) (actual time=38.299..41.463 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=790
+         ->  Partial Aggregate  (cost=13372.76..13372.77 rows=1 width=8) (actual time=34.890..34.891 rows=1 loops=3)
+               Buffers: shared hit=790
+               ->  Parallel Index Only Scan using idx_tasks_priority on tasks t  (cost=0.42..12331.09 rows=416667 width=0) (actual time=0.024..19.925 rows=333333 loops=3)
+                     Heap Fetches: 0
+                     Buffers: shared hit=790
+ Planning Time: 0.003 ms
+ Execution Time: 41.565 ms
+(13 rows)
+

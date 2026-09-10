@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -12,6 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts:/scripts:ro
     networks:
       - taskmanager-network
     healthcheck:
@@ -49,6 +48,27 @@ services:
       --password=taskmanager_password
       --changeLogFile=changelog/db.changelog-master.xml
       update
+    networks:
+      - taskmanager-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: taskmanager-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=taskmanager_db;Username=taskmanager;Password=taskmanager_password
+      ConnectionStrings__Redis: redis:6379
+    ports:
+      - "5000:8080"
     networks:
       - taskmanager-network
 

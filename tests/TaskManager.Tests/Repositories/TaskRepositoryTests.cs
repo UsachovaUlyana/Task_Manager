@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using TaskManager.Application.Common;
 using TaskManager.Domain.Entities;
 using TaskManager.Domain.Enums;
 using TaskManager.Infrastructure.Data;
@@ -159,6 +160,28 @@ public class TaskRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetByUserIdAsync_ShouldApplySortOrder()
+    {
+        // Arrange
+        var low = CreateTestTask("Low");
+        low.Priority = TaskPriority.Low;
+        var critical = CreateTestTask("Critical");
+        critical.Priority = TaskPriority.Critical;
+        var medium = CreateTestTask("Medium");
+        medium.Priority = TaskPriority.Medium;
+        await _repository.AddAsync(low);
+        await _repository.AddAsync(critical);
+        await _repository.AddAsync(medium);
+
+        // Act
+        var result = await _repository.GetByUserIdAsync(
+            _testUser.Id, null, null, null, null, null, 1, 10, new TaskSort(TaskSortField.Priority, Descending: true));
+
+        // Assert
+        result.Items.Select(t => t.Title).Should().Equal("Critical", "Medium", "Low");
+    }
+
+    [Fact]
     public async Task GetAllFilteredAsync_ShouldReturnAllTasks()
     {
         // Arrange
@@ -248,6 +271,52 @@ public class TaskRepositoryTests : IDisposable
         result.TotalPages.Should().Be(3);
         result.HasNextPage.Should().BeTrue();
         result.HasPreviousPage.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetStatusStatsAsync_ShouldGroupTasksByStatus()
+    {
+        // Arrange
+        var now = DateTime.UtcNow;
+        var overdue = CreateTestTask("Overdue");
+        overdue.DueDate = now.AddDays(-1);
+        var notDue = CreateTestTask("Not due");
+        notDue.DueDate = now.AddDays(1);
+        var completedLate = CreateTestTask("Completed late");
+        completedLate.Status = TaskItemStatus.Completed;
+        completedLate.DueDate = now.AddDays(-1);
+        await _repository.AddAsync(overdue);
+        await _repository.AddAsync(notDue);
+        await _repository.AddAsync(completedLate);
+
+        // Act
+        var result = await _repository.GetStatusStatsAsync(_testUser.Id, now);
+
+        // Assert
+        result.Should().HaveCount(2);
+        var pending = result.Single(s => s.Status == TaskItemStatus.Pending);
+        pending.Count.Should().Be(2);
+        pending.OverdueCount.Should().Be(1);
+        result.Single(s => s.Status == TaskItemStatus.Completed).OverdueCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetStatusStatsAsync_ShouldFilterByUser()
+    {
+        // Arrange
+        var own = CreateTestTask("Own");
+        var foreign = CreateTestTask("Foreign");
+        foreign.UserId = Guid.NewGuid();
+        await _repository.AddAsync(own);
+        await _repository.AddAsync(foreign);
+
+        // Act
+        var userStats = await _repository.GetStatusStatsAsync(_testUser.Id, DateTime.UtcNow);
+        var allStats = await _repository.GetStatusStatsAsync(null, DateTime.UtcNow);
+
+        // Assert
+        userStats.Sum(s => s.Count).Should().Be(1);
+        allStats.Sum(s => s.Count).Should().Be(2);
     }
 
     private TaskItem CreateTestTask(string title = "Test Task")

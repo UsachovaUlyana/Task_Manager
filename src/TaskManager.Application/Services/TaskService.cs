@@ -39,8 +39,17 @@ public class TaskService : ITaskService
     /// <inheritdoc/>
     public async Task<PagedResult<TaskDto>> GetTasksAsync(TaskFilterRequest filter, Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"{CacheKeyPrefix}list:{userId}:{filter.Status}:{filter.Priority}:{filter.ProjectId}:{filter.Page}:{filter.PageSize}";
-        
+        if (!TaskSort.TryParse(filter.Sort, out var sort))
+        {
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["sort"] = new[] { "Allowed values: created_at, due_date, priority, title; prefix with '-' for descending order." }
+            });
+        }
+
+        var cacheKey = $"{CacheKeyPrefix}list:{userId}:{filter.Status}:{filter.Priority}:{filter.ProjectId}:" +
+                       $"{filter.DueDateFrom:O}:{filter.DueDateTo:O}:{sort.Field}:{sort.Descending}:{filter.Page}:{filter.PageSize}";
+
         var cached = await _cacheService.GetAsync<PagedResult<TaskDto>>(cacheKey, cancellationToken);
         if (cached != null)
         {
@@ -67,13 +76,13 @@ public class TaskService : ITaskService
         {
             result = await _taskRepository.GetByUserIdAsync(
                 userId.Value, status, priority, filter.ProjectId,
-                filter.DueDateFrom, filter.DueDateTo, filter.Page, filter.PageSize, cancellationToken);
+                filter.DueDateFrom, filter.DueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
         }
         else
         {
             result = await _taskRepository.GetAllFilteredAsync(
                 status, priority, filter.ProjectId,
-                filter.DueDateFrom, filter.DueDateTo, filter.Page, filter.PageSize, cancellationToken);
+                filter.DueDateFrom, filter.DueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
         }
 
         var response = new PagedResult<TaskDto>
@@ -208,6 +217,19 @@ public class TaskService : ITaskService
     {
         var task = await _taskRepository.GetByIdAsync(taskId, cancellationToken);
         return task?.UserId == userId;
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<TaskStatusStatsDto>> GetStatusStatsAsync(Guid? userId = null, CancellationToken cancellationToken = default)
+    {
+        var stats = await _taskRepository.GetStatusStatsAsync(userId, DateTime.UtcNow, cancellationToken);
+
+        return stats.Select(s => new TaskStatusStatsDto
+        {
+            Status = s.Status.ToString(),
+            Count = s.Count,
+            OverdueCount = s.OverdueCount
+        }).ToList();
     }
 
     private static TaskDto MapToDto(TaskItem task)

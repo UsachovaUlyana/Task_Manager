@@ -30,6 +30,7 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
         DateTime? dueDateTo,
         int page,
         int pageSize,
+        TaskSort? sort = null,
         CancellationToken cancellationToken = default)
     {
         var query = DbSet
@@ -43,8 +44,7 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        var items = await query
-            .OrderByDescending(t => t.CreatedAt)
+        var items = await ApplySort(query, sort ?? TaskSort.Default)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -67,6 +67,7 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
         DateTime? dueDateTo,
         int page,
         int pageSize,
+        TaskSort? sort = null,
         CancellationToken cancellationToken = default)
     {
         var query = DbSet
@@ -80,8 +81,7 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        var items = await query
-            .OrderByDescending(t => t.CreatedAt)
+        var items = await ApplySort(query, sort ?? TaskSort.Default)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -104,6 +104,56 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
             .Include(t => t.Project)
             .Include(t => t.User)
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<TaskStatusCount>> GetStatusStatsAsync(
+        Guid? userId,
+        DateTime now,
+        CancellationToken cancellationToken = default)
+    {
+        var query = DbSet.AsQueryable();
+
+        if (userId.HasValue)
+        {
+            query = query.Where(t => t.UserId == userId.Value);
+        }
+
+        return await query
+            .GroupBy(t => t.Status)
+            .Select(g => new TaskStatusCount
+            {
+                Status = g.Key,
+                Count = g.Count(),
+                OverdueCount = g.Count(t => t.DueDate < now
+                    && (t.Status == TaskItemStatus.Pending || t.Status == TaskItemStatus.InProgress))
+            })
+            .OrderBy(s => s.Status)
+            .ToListAsync(cancellationToken);
+    }
+
+    private static IQueryable<TaskItem> ApplySort(IQueryable<TaskItem> query, TaskSort sort)
+    {
+        // created_at is effectively unique; other fields repeat a lot, so ties are broken
+        // by creation time to keep pages stable. The default order matches idx_tasks_*_created_at.
+        return sort.Field switch
+        {
+            TaskSortField.DueDate => (sort.Descending
+                    ? query.OrderByDescending(t => t.DueDate)
+                    : query.OrderBy(t => t.DueDate))
+                .ThenByDescending(t => t.CreatedAt),
+            TaskSortField.Priority => (sort.Descending
+                    ? query.OrderByDescending(t => t.Priority)
+                    : query.OrderBy(t => t.Priority))
+                .ThenByDescending(t => t.CreatedAt),
+            TaskSortField.Title => (sort.Descending
+                    ? query.OrderByDescending(t => t.Title)
+                    : query.OrderBy(t => t.Title))
+                .ThenByDescending(t => t.CreatedAt),
+            _ => sort.Descending
+                ? query.OrderByDescending(t => t.CreatedAt)
+                : query.OrderBy(t => t.CreatedAt)
+        };
     }
 
     private static IQueryable<TaskItem> ApplyFilters(

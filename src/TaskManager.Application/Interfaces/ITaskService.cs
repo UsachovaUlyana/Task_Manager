@@ -58,4 +58,12 @@ public interface ITaskService
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>True if the user owns the task; otherwise, false.</returns>
     Task<bool> IsOwnerAsync(Guid taskId, Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets task counts grouped by status.
+    /// </summary>
+    /// <param name="userId">Optional user ID for filtering by owner; null means all tasks.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The number of tasks per status.</returns>
+    Task<IReadOnlyList<TaskStatusStatsDto>> GetStatusStatsAsync(Guid? userId = null, CancellationToken cancellationToken = default);
 }

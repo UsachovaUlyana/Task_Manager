@@ -22,7 +22,6 @@ public class TaskTagConfiguration : IEntityTypeConfiguration<TaskTag>
         builder.Property(tt => tt.TagId)
             .HasColumnName("tag_id");
 
-        builder.HasIndex(tt => tt.TaskId);
         builder.HasIndex(tt => tt.TagId);
     }
 }

@@ -20,6 +20,7 @@ public interface ITaskRepository : IRepository<TaskItem>
     /// <param name="dueDateTo">Optional due date to filter.</param>
     /// <param name="page">The page number (1-based).</param>
     /// <param name="pageSize">The page size.</param>
+    /// <param name="sort">Optional sort order; null means newest first.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paginated result of tasks.</returns>
     Task<PagedResult<TaskItem>> GetByUserIdAsync(
@@ -31,6 +32,7 @@ public interface ITaskRepository : IRepository<TaskItem>
         DateTime? dueDateTo,
         int page,
         int pageSize,
+        TaskSort? sort = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -43,6 +45,7 @@ public interface ITaskRepository : IRepository<TaskItem>
     /// <param name="dueDateTo">Optional due date to filter.</param>
     /// <param name="page">The page number (1-based).</param>
     /// <param name="pageSize">The page size.</param>
+    /// <param name="sort">Optional sort order; null means newest first.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paginated result of tasks.</returns>
     Task<PagedResult<TaskItem>> GetAllFilteredAsync(
@@ -53,6 +56,7 @@ public interface ITaskRepository : IRepository<TaskItem>
         DateTime? dueDateTo,
         int page,
         int pageSize,
+        TaskSort? sort = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -62,4 +66,16 @@ public interface ITaskRepository : IRepository<TaskItem>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The task if found; otherwise, null.</returns>
     Task<TaskItem?> GetByIdWithDetailsAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the number of tasks grouped by status.
+    /// </summary>
+    /// <param name="userId">Optional owner filter; null means all tasks.</param>
+    /// <param name="now">The moment used to decide whether a task is overdue.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>One entry per status that has at least one task.</returns>
+    Task<IReadOnlyList<TaskStatusCount>> GetStatusStatsAsync(
+        Guid? userId,
+        DateTime now,
+        CancellationToken cancellationToken = default);
 }

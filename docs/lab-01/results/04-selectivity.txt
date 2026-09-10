@@ -1,0 +1,138 @@
+=== Задание 7. Создание idx_orders_status
+CREATE INDEX
+ANALYZE
+--- status = PAID
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2838.08..16834.49 rows=253633 width=53) (actual time=9.580..40.533 rows=250888 loops=1)
+   Recheck Cond: ((status)::text = 'PAID'::text)
+   Heap Blocks: exact=10826
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2774.67 rows=253633 width=0) (actual time=8.081..8.082 rows=250888 loops=1)
+         Index Cond: ((status)::text = 'PAID'::text)
+ Planning Time: 1.285 ms
+ Execution Time: 47.989 ms
+(7 rows)
+
+--- status = NEW
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2787.47..16728.06 rows=249167 width=53) (actual time=11.043..41.663 rows=250304 loops=1)
+   Recheck Cond: ((status)::text = 'NEW'::text)
+   Heap Blocks: exact=10826
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2725.18 rows=249167 width=0) (actual time=9.484..9.485 rows=250304 loops=1)
+         Index Cond: ((status)::text = 'NEW'::text)
+ Planning Time: 0.099 ms
+ Execution Time: 49.008 ms
+(7 rows)
+
+--- status = DELIVERED
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2798.96..16751.62 rows=250133 width=53) (actual time=9.885..40.079 rows=249462 loops=1)
+   Recheck Cond: ((status)::text = 'DELIVERED'::text)
+   Heap Blocks: exact=10826
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2736.42 rows=250133 width=0) (actual time=8.350..8.351 rows=249462 loops=1)
+         Index Cond: ((status)::text = 'DELIVERED'::text)
+ Planning Time: 0.060 ms
+ Execution Time: 47.553 ms
+(7 rows)
+
+--- status = CANCELLED
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2763.19..16677.53 rows=247067 width=53) (actual time=10.019..41.744 rows=249346 loops=1)
+   Recheck Cond: ((status)::text = 'CANCELLED'::text)
+   Heap Blocks: exact=10826
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2701.43 rows=247067 width=0) (actual time=8.540..8.541 rows=249346 loops=1)
+         Index Cond: ((status)::text = 'CANCELLED'::text)
+ Planning Time: 0.063 ms
+ Execution Time: 49.169 ms
+(7 rows)
+
+--- для сравнения: status = PAID последовательным сканированием (индексы запрещены)
+SET
+SET
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..23326.00 rows=253633 width=53) (actual time=0.011..70.809 rows=250888 loops=1)
+   Filter: ((status)::text = 'PAID'::text)
+   Rows Removed by Filter: 749112
+ Planning Time: 0.063 ms
+ Execution Time: 78.037 ms
+(5 rows)
+
+RESET
+RESET
+=== Задание 8. Распределение status (генератор из задания 2 — равномерный)
+  status   |  cnt   |  pct  
+-----------+--------+-------
+ CANCELLED | 249346 | 24.93
+ DELIVERED | 249462 | 24.95
+ NEW       | 250304 | 25.03
+ PAID      | 250888 | 25.09
+(4 rows)
+
+--- что знает планировщик (pg_stats)
+        most_common_vals        |               most_common_freqs               
+--------------------------------+-----------------------------------------------
+ {PAID,DELIVERED,NEW,CANCELLED} | {0.25363332,0.25013334,0.24916667,0.24706666}
+(1 row)
+
+=== Задание 8. Делаем распределение реалистичным: NEW 1%, CANCELLED 4%, PAID 20%, DELIVERED 75%
+UPDATE 1000000
+VACUUM
+ANALYZE
+  status   |  cnt   |  pct  
+-----------+--------+-------
+ NEW       |   9946 |  0.99
+ CANCELLED |  39793 |  3.98
+ PAID      | 199289 | 19.93
+ DELIVERED | 750972 | 75.10
+(4 rows)
+
+--- NEW (~1%)
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=113.92..11523.68 rows=10000 width=54) (actual time=1.874..18.732 rows=9946 loops=1)
+   Recheck Cond: ((status)::text = 'NEW'::text)
+   Heap Blocks: exact=6552
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..111.42 rows=10000 width=0) (actual time=1.063..1.064 rows=9946 loops=1)
+         Index Cond: ((status)::text = 'NEW'::text)
+ Planning Time: 0.231 ms
+ Execution Time: 19.209 ms
+(7 rows)
+
+--- CANCELLED (~4%)
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=447.58..12051.99 rows=39633 width=54) (actual time=4.106..23.292 rows=39793 loops=1)
+   Recheck Cond: ((status)::text = 'CANCELLED'::text)
+   Heap Blocks: exact=10823
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..437.67 rows=39633 width=0) (actual time=2.599..2.599 rows=39793 loops=1)
+         Index Cond: ((status)::text = 'CANCELLED'::text)
+ Planning Time: 0.074 ms
+ Execution Time: 24.682 ms
+(7 rows)
+
+--- PAID (~20%)
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2230.93..15827.84 rows=199033 width=54) (actual time=6.047..33.358 rows=199289 loops=1)
+   Recheck Cond: ((status)::text = 'PAID'::text)
+   Heap Blocks: exact=11109
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2181.17 rows=199033 width=0) (actual time=4.558..4.559 rows=199289 loops=1)
+         Index Cond: ((status)::text = 'PAID'::text)
+ Planning Time: 0.060 ms
+ Execution Time: 39.293 ms
+(7 rows)
+
+--- DELIVERED (~75%)
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..23609.00 rows=751333 width=54) (actual time=0.009..86.555 rows=750972 loops=1)
+   Filter: ((status)::text = 'DELIVERED'::text)
+   Rows Removed by Filter: 249028
+ Planning Time: 0.061 ms
+ Execution Time: 107.695 ms
+(5 rows)
+

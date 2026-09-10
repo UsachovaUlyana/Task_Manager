@@ -1,0 +1,67 @@
+=== Задание 9. ДО индекса: последние 7 дней
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..20326.77 rows=9261 width=54) (actual time=0.640..61.797 rows=9606 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on orders  (cost=0.00..18400.67 rows=3859 width=54) (actual time=0.017..55.014 rows=3202 loops=3)
+         Filter: (created_at > (now() - '7 days'::interval))
+         Rows Removed by Filter: 330131
+ Planning Time: 1.514 ms
+ Execution Time: 62.231 ms
+(8 rows)
+
+CREATE INDEX
+ANALYZE
+=== Задание 9. ПОСЛЕ индекса: 7 дней
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=188.90..11616.72 rows=9867 width=54) (actual time=2.264..7.863 rows=9606 loops=1)
+   Recheck Cond: (created_at > (now() - '7 days'::interval))
+   Heap Blocks: exact=6413
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..186.43 rows=9867 width=0) (actual time=1.402..1.403 rows=9606 loops=1)
+         Index Cond: (created_at > (now() - '7 days'::interval))
+ Planning Time: 0.402 ms
+ Execution Time: 8.308 ms
+(7 rows)
+
+--- 1 день
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=27.35..3979.21 rows=1409 width=54) (actual time=0.383..1.657 rows=1327 loops=1)
+   Recheck Cond: (created_at > (now() - '1 day'::interval))
+   Heap Blocks: exact=1250
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..27.00 rows=1409 width=0) (actual time=0.242..0.242 rows=1327 loops=1)
+         Index Cond: (created_at > (now() - '1 day'::interval))
+ Planning Time: 0.189 ms
+ Execution Time: 1.776 ms
+(7 rows)
+
+--- 1 месяц
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=783.43..12621.80 rows=41678 width=54) (actual time=6.346..17.874 rows=41484 loops=1)
+   Recheck Cond: (created_at > (now() - '1 mon'::interval))
+   Heap Blocks: exact=10842
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..773.01 rows=41678 width=0) (actual time=4.454..4.454 rows=41484 loops=1)
+         Index Cond: (created_at > (now() - '1 mon'::interval))
+ Planning Time: 0.086 ms
+ Execution Time: 19.412 ms
+(7 rows)
+
+--- 1 год
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..28609.00 rows=495626 width=54) (actual time=0.011..162.285 rows=500532 loops=1)
+   Filter: (created_at > (now() - '1 year'::interval))
+   Rows Removed by Filter: 499468
+ Planning Time: 0.229 ms
+ Execution Time: 177.174 ms
+(5 rows)
+
+--- доля таблицы, попадающая в каждый диапазон
+ day_1 | days_7 | month_1 | year_1 |  total  
+-------+--------+---------+--------+---------
+  1327 |   9606 |   41484 | 500532 | 1000000
+(1 row)
+

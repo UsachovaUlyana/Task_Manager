@@ -1,0 +1,68 @@
+=== Задание 19. Таблица orders_insert_test только с PRIMARY KEY
+DROP TABLE
+NOTICE:  table "orders_insert_test" does not exist, skipping
+CREATE TABLE
+ setseed 
+---------
+ 
+(1 row)
+
+--- INSERT 1 000 000 строк: только PK
+Timing is on.
+INSERT 0 1000000
+Time: 3485.473 ms (00:03.485)
+--- UPDATE 100 000 строк (меняем индексируемую колонку status): только PK
+UPDATE 100000
+Time: 435.392 ms
+--- DELETE 100 000 строк: только PK
+DELETE 100000
+Time: 88.185 ms
+Timing is off.
+ table_size | indexes_size 
+------------+--------------
+ 93 MB      | 24 MB
+(1 row)
+
+TRUNCATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+ setseed 
+---------
+ 
+(1 row)
+
+--- INSERT 1 000 000 строк: PK + 5 индексов
+Timing is on.
+INSERT 0 1000000
+Time: 17807.393 ms (00:17.807)
+--- UPDATE 100 000 строк: PK + 5 индексов
+UPDATE 100000
+Time: 2505.831 ms (00:02.506)
+--- DELETE 100 000 строк: PK + 5 индексов
+DELETE 100000
+Time: 131.335 ms
+Timing is off.
+ table_size | indexes_size 
+------------+--------------
+ 93 MB      | 162 MB
+(1 row)
+
+DROP TABLE
+=== Задание 20. Статистика использования индексов (pg_stat_user_indexes)
+ schemaname | relname |          indexrelname           | idx_scan |  size   
+------------+---------+---------------------------------+----------+---------
+ public     | users   | users_pkey                      |        0 | 11 MB
+ public     | orders  | idx_orders_new                  |        1 | 248 kB
+ public     | users   | idx_users_lower_email           |        1 | 19 MB
+ public     | users   | idx_users_email                 |        1 | 19 MB
+ public     | orders  | orders_pkey                     |        2 | 23 MB
+ public     | orders  | idx_orders_user_created_at_desc |        3 | 32 MB
+ public     | orders  | idx_orders_created_at           |        3 | 23 MB
+ public     | orders  | idx_orders_user_id_include      |        5 | 57 MB
+ public     | orders  | idx_orders_user_id              |       11 | 9448 kB
+ public     | orders  | idx_orders_status               |       15 | 7232 kB
+(10 rows)
+

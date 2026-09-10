@@ -1,0 +1,147 @@
+DROP INDEX
+NOTICE:  relation "idx_orders_user_id" already exists, skipping
+CREATE INDEX
+CREATE INDEX
+NOTICE:  relation "idx_orders_status" already exists, skipping
+CREATE INDEX
+NOTICE:  relation "idx_orders_created_at" already exists, skipping
+VACUUM
+=== Задание 21. Индексы до оптимизации
+       indexname       |                                   indexdef                                   
+-----------------------+------------------------------------------------------------------------------
+ idx_orders_created_at | CREATE INDEX idx_orders_created_at ON public.orders USING btree (created_at)
+ idx_orders_status     | CREATE INDEX idx_orders_status ON public.orders USING btree (status)
+ idx_orders_user_id    | CREATE INDEX idx_orders_user_id ON public.orders USING btree (user_id)
+ orders_pkey           | CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)
+(4 rows)
+
+PREPARE
+=== Задание 21. ДО: user_id = 123
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=51.90..51.91 rows=1 width=30) (actual time=0.119..0.120 rows=0 loops=1)
+   Buffers: shared read=18
+   ->  Sort  (cost=51.90..51.91 rows=1 width=30) (actual time=0.118..0.119 rows=0 loops=1)
+         Sort Key: created_at DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared read=18
+         ->  Index Scan using idx_orders_user_id on orders  (cost=0.43..51.89 rows=1 width=30) (actual time=0.109..0.109 rows=0 loops=1)
+               Index Cond: (user_id = '123'::bigint)
+               Filter: (((status)::text = 'PAID'::text) AND (created_at >= (now() - '30 days'::interval)))
+               Rows Removed by Filter: 15
+               Buffers: shared read=18
+ Planning:
+   Buffers: shared hit=49
+ Planning Time: 0.411 ms
+ Execution Time: 0.217 ms
+(15 rows)
+
+=== Задание 21. ДО: крупный пользователь 100001
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=5203.22..5203.35 rows=50 width=30) (actual time=14.887..14.898 rows=50 loops=1)
+   Buffers: shared hit=10 read=604
+   ->  Sort  (cost=5203.22..5204.29 rows=427 width=30) (actual time=14.886..14.892 rows=50 loops=1)
+         Sort Key: created_at DESC
+         Sort Method: top-N heapsort  Memory: 31kB
+         Buffers: shared hit=10 read=604
+         ->  Bitmap Heap Scan on orders  (cost=3738.29..5189.04 rows=427 width=30) (actual time=13.266..14.809 rows=377 loops=1)
+               Recheck Cond: ((user_id = '100001'::bigint) AND (created_at >= (now() - '30 days'::interval)) AND ((status)::text = 'PAID'::text))
+               Heap Blocks: exact=264
+               Buffers: shared hit=10 read=604
+               ->  BitmapAnd  (cost=3738.29..3738.29 rows=427 width=0) (actual time=13.219..13.222 rows=0 loops=1)
+                     Buffers: shared hit=4 read=346
+                     ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..623.35 rows=51590 width=0) (actual time=1.701..1.702 rows=50000 loops=1)
+                           Index Cond: (user_id = '100001'::bigint)
+                           Buffers: shared hit=1 read=46
+                     ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..800.45 rows=43203 width=0) (actual time=5.432..5.432 rows=43424 loops=1)
+                           Index Cond: (created_at >= (now() - '30 days'::interval))
+                           Buffers: shared hit=3 read=121
+                     ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2313.66 rows=211365 width=0) (actual time=5.865..5.866 rows=209307 loops=1)
+                           Index Cond: ((status)::text = 'PAID'::text)
+                           Buffers: shared read=179
+ Planning Time: 0.144 ms
+ Execution Time: 15.077 ms
+(23 rows)
+
+=== Промежуточный вариант: (user_id, created_at DESC) — статус проверяется фильтром
+CREATE INDEX
+ANALYZE
+DEALLOCATE
+PREPARE
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..931.50 rows=50 width=30) (actual time=0.064..0.571 rows=50 loops=1)
+   Buffers: shared hit=211 read=73
+   ->  Index Scan using idx_orders_user_created_at_desc on orders  (cost=0.43..7709.69 rows=414 width=30) (actual time=0.063..0.565 rows=50 loops=1)
+         Index Cond: ((user_id = '100001'::bigint) AND (created_at >= (now() - '30 days'::interval)))
+         Filter: ((status)::text = 'PAID'::text)
+         Rows Removed by Filter: 230
+         Buffers: shared hit=211 read=73
+ Planning:
+   Buffers: shared hit=17 read=1
+ Planning Time: 0.397 ms
+ Execution Time: 0.604 ms
+(11 rows)
+
+DROP INDEX
+=== Итоговый индекс: равенства -> диапазон/сортировка, остальное в INCLUDE
+CREATE INDEX
+VACUUM
+DEALLOCATE
+PREPARE
+=== Задание 21. ПОСЛЕ: user_id = 123
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..8.45 rows=1 width=30) (actual time=0.049..0.049 rows=0 loops=1)
+   Buffers: shared read=3
+   ->  Index Scan using idx_orders_user_status_created_at on orders  (cost=0.43..8.45 rows=1 width=30) (actual time=0.048..0.048 rows=0 loops=1)
+         Index Cond: ((user_id = '123'::bigint) AND ((status)::text = 'PAID'::text) AND (created_at >= (now() - '30 days'::interval)))
+         Buffers: shared read=3
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.318 ms
+ Execution Time: 0.073 ms
+(9 rows)
+
+=== Задание 21. ПОСЛЕ: крупный пользователь 100001
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..197.98 rows=50 width=30) (actual time=0.050..0.100 rows=50 loops=1)
+   Buffers: shared hit=51 read=2
+   ->  Index Scan using idx_orders_user_status_created_at on orders  (cost=0.43..1569.00 rows=397 width=30) (actual time=0.049..0.096 rows=50 loops=1)
+         Index Cond: ((user_id = '100001'::bigint) AND ((status)::text = 'PAID'::text) AND (created_at >= (now() - '30 days'::interval)))
+         Buffers: shared hit=51 read=2
+ Planning Time: 0.217 ms
+ Execution Time: 0.139 ms
+(7 rows)
+
+--- id тоже в INCLUDE: полностью Index Only Scan
+DROP INDEX
+CREATE INDEX
+VACUUM
+DEALLOCATE
+PREPARE
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..3.45 rows=50 width=30) (actual time=0.063..0.074 rows=50 loops=1)
+   Buffers: shared hit=1 read=3
+   ->  Index Only Scan using idx_orders_user_status_created_at on orders  (cost=0.43..25.95 rows=423 width=30) (actual time=0.062..0.068 rows=50 loops=1)
+         Index Cond: ((user_id = '100001'::bigint) AND (status = 'PAID'::text) AND (created_at >= (now() - '30 days'::interval)))
+         Heap Fetches: 0
+         Buffers: shared hit=1 read=3
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.460 ms
+ Execution Time: 0.116 ms
+(10 rows)
+
+           indexrelname            |  size   
+-----------------------------------+---------
+ idx_orders_created_at             | 23 MB
+ idx_orders_status                 | 7232 kB
+ idx_orders_user_id                | 9448 kB
+ idx_orders_user_status_created_at | 66 MB
+ orders_pkey                       | 23 MB
+(5 rows)
+

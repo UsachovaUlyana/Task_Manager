@@ -1,0 +1,128 @@
+=== Задание 10. status = CANCELLED (~4% таблицы)
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=450.17..12058.76 rows=39967 width=54) (actual time=4.339..19.095 rows=39793 loops=1)
+   Recheck Cond: ((status)::text = 'CANCELLED'::text)
+   Heap Blocks: exact=10823
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..440.18 rows=39967 width=0) (actual time=2.855..2.856 rows=39793 loops=1)
+         Index Cond: ((status)::text = 'CANCELLED'::text)
+ Planning Time: 0.860 ms
+ Execution Time: 20.441 ms
+(7 rows)
+
+--- created_at за последний месяц (~4%)
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=783.43..12621.80 rows=41678 width=54) (actual time=5.876..17.211 rows=41484 loops=1)
+   Recheck Cond: (created_at > (now() - '1 mon'::interval))
+   Heap Blocks: exact=10842
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..773.01 rows=41678 width=0) (actual time=4.416..4.416 rows=41484 loops=1)
+         Index Cond: (created_at > (now() - '1 mon'::interval))
+ Planning Time: 0.153 ms
+ Execution Time: 18.522 ms
+(7 rows)
+
+--- amount BETWEEN 1000 AND 3000 (индекса по amount нет)
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..26109.00 rows=203646 width=54) (actual time=0.016..111.306 rows=200593 loops=1)
+   Filter: ((amount >= '1000'::numeric) AND (amount <= '3000'::numeric))
+   Rows Removed by Filter: 799407
+ Planning Time: 0.217 ms
+ Execution Time: 117.322 ms
+(5 rows)
+
+--- для сравнения: запрещаем bitmap — планировщик выбирает между Index Scan и Seq Scan
+SET
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..21314.03 rows=39967 width=54) (actual time=0.516..31.448 rows=39793 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on orders  (cost=0.00..16317.33 rows=16653 width=54) (actual time=0.026..24.569 rows=13264 loops=3)
+         Filter: ((status)::text = 'CANCELLED'::text)
+         Rows Removed by Filter: 320069
+ Planning Time: 0.069 ms
+ Execution Time: 32.772 ms
+(8 rows)
+
+--- запрещаем и Seq Scan: остаётся только обычный Index Scan
+SET
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_orders_status on orders  (cost=0.42..29075.76 rows=39967 width=54) (actual time=0.036..10.811 rows=39793 loops=1)
+   Index Cond: ((status)::text = 'CANCELLED'::text)
+   Buffers: shared hit=10860
+ Planning Time: 0.061 ms
+ Execution Time: 12.214 ms
+(5 rows)
+
+--- тот же запрос через Bitmap (для сравнения BUFFERS)
+RESET
+RESET
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=450.17..12058.76 rows=39967 width=54) (actual time=3.840..15.156 rows=39793 loops=1)
+   Recheck Cond: ((status)::text = 'CANCELLED'::text)
+   Heap Blocks: exact=10823
+   Buffers: shared hit=10860
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..440.18 rows=39967 width=0) (actual time=2.195..2.196 rows=39793 loops=1)
+         Index Cond: ((status)::text = 'CANCELLED'::text)
+         Buffers: shared hit=37
+ Planning Time: 0.066 ms
+ Execution Time: 16.763 ms
+(9 rows)
+
+=== Задание 11. Индексы на таблице orders
+       indexname       |                                   indexdef                                   
+-----------------------+------------------------------------------------------------------------------
+ idx_orders_created_at | CREATE INDEX idx_orders_created_at ON public.orders USING btree (created_at)
+ idx_orders_status     | CREATE INDEX idx_orders_status ON public.orders USING btree (status)
+ idx_orders_user_id    | CREATE INDEX idx_orders_user_id ON public.orders USING btree (user_id)
+ orders_pkey           | CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)
+(4 rows)
+
+=== Задание 11. user_id = 123 AND status = PAID
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4.51..47.63 rows=2 width=54) (actual time=0.057..0.079 rows=4 loops=1)
+   Recheck Cond: (user_id = 123)
+   Filter: ((status)::text = 'PAID'::text)
+   Rows Removed by Filter: 11
+   Heap Blocks: exact=15
+   ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.050..0.050 rows=15 loops=1)
+         Index Cond: (user_id = 123)
+ Planning Time: 0.126 ms
+ Execution Time: 0.114 ms
+(9 rows)
+
+--- запрос, где оба условия умеренно селективны: BitmapAnd
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=884.65..2290.38 rows=415 width=54) (actual time=5.426..6.024 rows=410 loops=1)
+   Recheck Cond: (((status)::text = 'NEW'::text) AND (created_at > (now() - '1 mon'::interval)))
+   Heap Blocks: exact=398
+   ->  BitmapAnd  (cost=884.65..884.65 rows=415 width=0) (actual time=5.264..5.265 rows=0 loops=1)
+         ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..111.18 rows=9967 width=0) (actual time=0.967..0.968 rows=9946 loops=1)
+               Index Cond: ((status)::text = 'NEW'::text)
+         ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..773.01 rows=41678 width=0) (actual time=3.919..3.920 rows=41484 loops=1)
+               Index Cond: (created_at > (now() - '1 mon'::interval))
+ Planning Time: 0.083 ms
+ Execution Time: 6.195 ms
+(10 rows)
+
+--- OR по двум индексам: BitmapOr
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=9.03..94.42 rows=22 width=54) (actual time=0.046..0.084 rows=28 loops=1)
+   Recheck Cond: ((user_id = 123) OR (user_id = 456))
+   Heap Blocks: exact=28
+   ->  BitmapOr  (cost=9.03..9.03 rows=22 width=0) (actual time=0.039..0.039 rows=0 loops=1)
+         ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.022..0.022 rows=15 loops=1)
+               Index Cond: (user_id = 123)
+         ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.016..0.016 rows=13 loops=1)
+               Index Cond: (user_id = 456)
+ Planning Time: 0.091 ms
+ Execution Time: 0.153 ms
+(10 rows)
+

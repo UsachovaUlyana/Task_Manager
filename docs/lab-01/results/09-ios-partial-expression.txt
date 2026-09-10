@@ -1,0 +1,248 @@
+VACUUM
+=== Задание 16. ДО: SELECT id, user_id при индексе (user_id)
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_orders_user_id on orders  (cost=0.43..51.90 rows=12 width=16) (actual time=0.034..0.052 rows=15 loops=1)
+   Index Cond: (user_id = 123)
+   Buffers: shared hit=21
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.176 ms
+ Execution Time: 0.082 ms
+(7 rows)
+
+--- крупный пользователь
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=607.16..12888.47 rows=49385 width=16) (actual time=0.896..5.262 rows=50000 loops=1)
+   Recheck Cond: (user_id = 100001)
+   Heap Blocks: exact=556
+   Buffers: shared hit=601
+   ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..594.82 rows=49385 width=0) (actual time=0.830..0.831 rows=50000 loops=1)
+         Index Cond: (user_id = 100001)
+         Buffers: shared hit=45
+ Planning Time: 0.044 ms
+ Execution Time: 7.106 ms
+(9 rows)
+
+=== Задание 16. Индекс с INCLUDE
+CREATE INDEX
+VACUUM
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using idx_orders_user_id_include on orders  (cost=0.43..4.64 rows=12 width=16) (actual time=0.041..0.043 rows=15 loops=1)
+   Index Cond: (user_id = 123)
+   Heap Fetches: 0
+   Buffers: shared hit=1 read=3
+ Planning:
+   Buffers: shared hit=9
+ Planning Time: 0.142 ms
+ Execution Time: 0.106 ms
+(8 rows)
+
+--- крупный пользователь
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using idx_orders_user_id_include on orders  (cost=0.43..2335.25 rows=51590 width=16) (actual time=0.074..6.394 rows=50000 loops=1)
+   Index Cond: (user_id = 100001)
+   Heap Fetches: 0
+   Buffers: shared hit=2 read=346
+ Planning Time: 0.051 ms
+ Execution Time: 8.192 ms
+(6 rows)
+
+--- колонки из INCLUDE тоже читаются из индекса
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using idx_orders_user_id_include on orders  (cost=0.43..2335.25 rows=51590 width=24) (actual time=0.019..6.287 rows=50000 loops=1)
+   Index Cond: (user_id = 100001)
+   Heap Fetches: 0
+   Buffers: shared hit=348
+ Planning:
+   Buffers: shared hit=6
+ Planning Time: 0.140 ms
+ Execution Time: 8.163 ms
+(8 rows)
+
+--- amount в индексе нет — Index Only Scan невозможен
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=632.25..12941.12 rows=51590 width=14) (actual time=1.190..6.142 rows=50000 loops=1)
+   Recheck Cond: (user_id = 100001)
+   Heap Blocks: exact=556
+   Buffers: shared hit=601
+   ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..619.35 rows=51590 width=0) (actual time=1.123..1.123 rows=50000 loops=1)
+         Index Cond: (user_id = 100001)
+         Buffers: shared hit=45
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.123 ms
+ Execution Time: 8.060 ms
+(11 rows)
+
+--- меняем часть строк без VACUUM: страницы перестают быть all-visible
+UPDATE 2027
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using idx_orders_user_id_include on orders  (cost=0.43..2431.16 rows=51692 width=16) (actual time=0.038..9.986 rows=50000 loops=1)
+   Index Cond: (user_id = 100001)
+   Heap Fetches: 51125
+   Buffers: shared hit=931 dirtied=366
+ Planning Time: 0.078 ms
+ Execution Time: 11.877 ms
+(6 rows)
+
+VACUUM
+--- после VACUUM
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using idx_orders_user_id_include on orders  (cost=0.43..2339.23 rows=51589 width=16) (actual time=0.023..5.164 rows=50000 loops=1)
+   Index Cond: (user_id = 100001)
+   Heap Fetches: 0
+   Buffers: shared hit=362
+ Planning:
+   Buffers: shared hit=28
+ Planning Time: 0.260 ms
+ Execution Time: 7.074 ms
+(8 rows)
+
+=== Задание 17. ДО: WHERE status = NEW ORDER BY created_at (есть только idx_orders_status)
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=12569.39..12593.80 rows=9765 width=54) (actual time=9.360..10.806 rows=10409 loops=1)
+   Sort Key: created_at
+   Sort Method: quicksort  Memory: 1198kB
+   ->  Bitmap Heap Scan on orders  (cost=112.11..11922.29 rows=9765 width=54) (actual time=1.875..6.748 rows=10409 loops=1)
+         Recheck Cond: ((status)::text = 'NEW'::text)
+         Heap Blocks: exact=6859
+         ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..109.66 rows=9765 width=0) (actual time=0.959..0.960 rows=10409 loops=1)
+               Index Cond: ((status)::text = 'NEW'::text)
+ Planning Time: 0.170 ms
+ Execution Time: 11.303 ms
+(10 rows)
+
+--- типичный запрос очереди: первые 20 новых заказов
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..157.42 rows=20 width=54) (actual time=0.190..1.667 rows=20 loops=1)
+   ->  Index Scan using idx_orders_created_at on orders  (cost=0.43..76650.92 rows=9765 width=54) (actual time=0.189..1.664 rows=20 loops=1)
+         Filter: ((status)::text = 'NEW'::text)
+         Rows Removed by Filter: 1903
+ Planning Time: 0.084 ms
+ Execution Time: 1.687 ms
+(6 rows)
+
+=== Задание 17. Вариант А: обычный составной индекс (status, created_at)
+CREATE INDEX
+ANALYZE
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=12854.19..12880.71 rows=10605 width=54) (actual time=10.273..11.709 rows=10409 loops=1)
+   Sort Key: created_at
+   Sort Method: quicksort  Memory: 1198kB
+   ->  Bitmap Heap Scan on orders  (cost=122.62..12145.12 rows=10605 width=54) (actual time=1.915..7.457 rows=10409 loops=1)
+         Recheck Cond: ((status)::text = 'NEW'::text)
+         Heap Blocks: exact=6859
+         ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..119.96 rows=10605 width=0) (actual time=0.985..0.985 rows=10409 loops=1)
+               Index Cond: ((status)::text = 'NEW'::text)
+ Planning Time: 0.349 ms
+ Execution Time: 12.284 ms
+(10 rows)
+
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..44.64 rows=20 width=54) (actual time=0.058..0.082 rows=20 loops=1)
+   ->  Index Scan using idx_orders_status_created_at on orders  (cost=0.43..23445.05 rows=10605 width=54) (actual time=0.057..0.080 rows=20 loops=1)
+         Index Cond: ((status)::text = 'NEW'::text)
+ Planning Time: 0.097 ms
+ Execution Time: 0.101 ms
+(5 rows)
+
+ regular_index_size 
+--------------------
+ 39 MB
+(1 row)
+
+DROP INDEX
+=== Задание 17. Вариант Б: частичный индекс idx_orders_new
+CREATE INDEX
+ANALYZE
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=12854.19..12880.71 rows=10605 width=54) (actual time=9.592..11.137 rows=10409 loops=1)
+   Sort Key: created_at
+   Sort Method: quicksort  Memory: 1198kB
+   ->  Bitmap Heap Scan on orders  (cost=122.62..12145.12 rows=10605 width=54) (actual time=1.846..7.092 rows=10409 loops=1)
+         Recheck Cond: ((status)::text = 'NEW'::text)
+         Heap Blocks: exact=6859
+         ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..119.96 rows=10605 width=0) (actual time=0.935..0.935 rows=10409 loops=1)
+               Index Cond: ((status)::text = 'NEW'::text)
+ Planning Time: 0.413 ms
+ Execution Time: 11.636 ms
+(10 rows)
+
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.29..55.86 rows=20 width=54) (actual time=0.048..0.077 rows=20 loops=1)
+   ->  Index Scan using idx_orders_new on orders  (cost=0.29..29467.33 rows=10605 width=54) (actual time=0.048..0.075 rows=20 loops=1)
+ Planning Time: 0.099 ms
+ Execution Time: 0.096 ms
+(4 rows)
+
+ partial_index_size 
+--------------------
+ 248 kB
+(1 row)
+
+--- частичный индекс не подходит для других статусов
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..7.75 rows=20 width=54) (actual time=0.058..0.160 rows=20 loops=1)
+   ->  Index Scan using idx_orders_created_at on orders  (cost=0.43..76651.40 rows=209230 width=54) (actual time=0.057..0.157 rows=20 loops=1)
+         Filter: ((status)::text = 'PAID'::text)
+         Rows Removed by Filter: 80
+ Planning Time: 0.071 ms
+ Execution Time: 0.187 ms
+(6 rows)
+
+=== Задание 18. Таблица users (500 000 email в разном регистре)
+DROP TABLE
+NOTICE:  table "users" does not exist, skipping
+CREATE TABLE
+INSERT 0 500000
+INSERT 0 1
+CREATE INDEX
+ANALYZE
+--- LOWER(email) = ... при индексе по email
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..8052.01 rows=2500 width=30) (actual time=59.162..62.431 rows=1 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on users  (cost=0.00..6802.01 rows=1042 width=30) (actual time=55.922..55.923 rows=0 loops=3)
+         Filter: (lower((email)::text) = 'test@example.com'::text)
+         Rows Removed by Filter: 166667
+ Planning Time: 0.228 ms
+ Execution Time: 62.449 ms
+(8 rows)
+
+--- тот же индекс работает для точного сравнения email = ...
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_users_email on users  (cost=0.42..8.44 rows=1 width=30) (actual time=0.042..0.043 rows=1 loops=1)
+   Index Cond: ((email)::text = 'Test@Example.com'::text)
+ Planning Time: 0.057 ms
+ Execution Time: 0.059 ms
+(4 rows)
+
+CREATE INDEX
+ANALYZE
+--- ПОСЛЕ индекса по выражению LOWER(email)
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_users_lower_email on users  (cost=0.42..8.44 rows=1 width=30) (actual time=0.033..0.034 rows=1 loops=1)
+   Index Cond: (lower((email)::text) = 'test@example.com'::text)
+ Planning Time: 0.302 ms
+ Execution Time: 0.060 ms
+(4 rows)
+

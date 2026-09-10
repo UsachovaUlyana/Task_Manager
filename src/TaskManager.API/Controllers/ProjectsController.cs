@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaskManager.Application.Common;
 using TaskManager.Application.DTOs.Common;
 using TaskManager.Application.DTOs.Projects;
+using TaskManager.Application.DTOs.Tasks;
 using TaskManager.Application.Exceptions;
 using TaskManager.Application.Interfaces;
 
@@ -20,16 +21,19 @@ public class ProjectsController : ControllerBase
 {
     private readonly IProjectService _projectService;
     private readonly IProjectRepository _projectRepository;
+    private readonly ITaskService _taskService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ProjectsController"/> class.
     /// </summary>
     /// <param name="projectService">The project service.</param>
     /// <param name="projectRepository">The project repository.</param>
-    public ProjectsController(IProjectService projectService, IProjectRepository projectRepository)
+    /// <param name="taskService">The task service.</param>
+    public ProjectsController(IProjectService projectService, IProjectRepository projectRepository, ITaskService taskService)
     {
         _projectService = projectService;
         _projectRepository = projectRepository;
+        _taskService = taskService;
     }
 
     /// <summary>
@@ -105,6 +109,54 @@ public class ProjectsController : ControllerBase
         }
 
         return Ok(ApiResponse<ProjectDto>.Ok(project));
+    }
+
+    /// <summary>
+    /// Gets tasks of a project with filtering, sorting and pagination.
+    /// </summary>
+    /// <param name="id">The project ID.</param>
+    /// <param name="filter">The filter parameters; the project is taken from the route.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A paginated list of the project's tasks.</returns>
+    /// <remarks>
+    /// - Admin and API Key users can see tasks of any project.
+    /// - Regular users can see tasks of projects they participate in, including tasks of other members.
+    /// </remarks>
+    /// <response code="200">Returns the paginated list of tasks.</response>
+    /// <response code="400">If the sort parameter is invalid.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="403">If the user doesn't have access to this project.</response>
+    /// <response code="404">If the project is not found.</response>
+    [HttpGet("{id:guid}/tasks")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResult<TaskDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<PagedResult<TaskDto>>>> GetProjectTasks(
+        Guid id,
+        [FromQuery] TaskFilterRequest filter,
+        CancellationToken cancellationToken)
+    {
+        if (!await _projectRepository.ExistsAsync(p => p.Id == id, cancellationToken))
+        {
+            throw new NotFoundException("Project", id);
+        }
+
+        // Check access for regular users
+        if (!User.IsInRole("Admin") && !User.IsInRole("ApiKey"))
+        {
+            var userId = GetCurrentUserId();
+            var isMember = await _projectRepository.IsUserMemberAsync(id, userId, cancellationToken);
+            if (!isMember)
+            {
+                throw new ForbiddenException("You don't have access to this project.");
+            }
+        }
+
+        filter.ProjectId = id;
+        var result = await _taskService.GetTasksAsync(filter, null, cancellationToken);
+        return Ok(ApiResponse<PagedResult<TaskDto>>.Ok(result));
     }
 
     /// <summary>

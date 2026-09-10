@@ -1,0 +1,389 @@
+### Профиль данных
+   username    | tasks 
+---------------+-------
+ gen_user_1    | 10041
+ gen_user_5000 |    68
+(2 rows)
+
+ median_tasks_per_user | max_tasks_per_user 
+-----------------------+--------------------
+                    72 |              10041
+(1 row)
+
+ status | count  | pct  
+--------+--------+------
+      0 | 200659 | 20.1
+      1 | 199515 | 20.0
+      2 | 549822 | 55.0
+      3 |  50004 |  5.0
+(4 rows)
+
+
+### Время ответа API (после прогрева, кэш Redis очищен)
+--- gen_user_1 (активный пользователь)
+GET /api/tasks?page=1&pageSize=10 -> HTTP 200, 0.014596s
+GET /api/tasks?status=InProgress&priority=High&page=1&pageSize=10 -> HTTP 200, 0.039616s
+GET /api/tasks/stats -> HTTP 200, 0.009618s
+--- gen_user_5000 (типичный пользователь)
+GET /api/tasks?page=1&pageSize=10 -> HTTP 200, 0.012158s
+--- gen_admin (видит все задачи)
+GET /api/tasks?page=1&pageSize=10 -> HTTP 200, 0.033981s
+GET /api/tasks?status=Pending&page=1&pageSize=10 -> HTTP 200, 0.022556s
+GET /api/tasks/stats -> HTTP 200, 0.074324s
+
+### Использование индексов этими запросами (pg_stat_user_indexes)
+    relname    |         indexrelname         | idx_scan |  size   
+---------------+------------------------------+----------+---------
+ projects      | projects_pkey                |       16 | 56 kB
+ projects      | idx_projects_name            |        0 | 64 kB
+ tags          | tags_pkey                    |       84 | 16 kB
+ tags          | tags_name_key                |        0 | 16 kB
+ task_tags     | pk_task_tags                 |       96 | 49 MB
+ task_tags     | idx_task_tags_tag_id         |        0 | 5248 kB
+ tasks         | idx_tasks_user_id_created_at |        9 | 39 MB
+ tasks         | idx_tasks_priority           |        5 | 6328 kB
+ tasks         | idx_tasks_created_at         |        4 | 21 MB
+ tasks         | idx_tasks_status             |        3 | 6328 kB
+ tasks         | idx_tasks_due_date           |        0 | 19 MB
+ tasks         | idx_tasks_project_id         |        0 | 9320 kB
+ tasks         | tasks_pkey                   |        0 | 38 MB
+ user_projects | idx_user_projects_project_id |        0 | 224 kB
+ user_projects | pk_user_projects             |        0 | 1256 kB
+ users         | users_pkey                   |       48 | 408 kB
+ users         | users_email_key              |        0 | 856 kB
+ users         | users_username_key           |        0 | 528 kB
+(18 rows)
+
+
+### SQL из лога PostgreSQL
+2026-09-10 12:45:19.147 UTC [846] LOG:  duration: 0.041 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.148 UTC [846] LOG:  duration: 0.068 ms  parse <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1
+2026-09-10 12:45:19.148 UTC [846] LOG:  duration: 0.125 ms  bind <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1
+2026-09-10 12:45:19.148 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e'
+2026-09-10 12:45:19.149 UTC [846] LOG:  duration: 0.790 ms  execute <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1
+2026-09-10 12:45:19.149 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e'
+2026-09-10 12:45:19.150 UTC [846] LOG:  duration: 0.069 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.150 UTC [846] LOG:  duration: 0.504 ms  parse <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.151 UTC [846] LOG:  duration: 1.033 ms  bind <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.151 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e', $2 = '10', $3 = '0'
+2026-09-10 12:45:19.152 UTC [846] LOG:  duration: 0.451 ms  execute <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.152 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e', $2 = '10', $3 = '0'
+2026-09-10 12:45:19.229 UTC [846] LOG:  duration: 0.081 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.229 UTC [846] LOG:  duration: 0.074 ms  parse <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1 AND t.status = $2 AND t.priority = $3
+2026-09-10 12:45:19.229 UTC [846] LOG:  duration: 0.167 ms  bind <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1 AND t.status = $2 AND t.priority = $3
+2026-09-10 12:45:19.229 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e', $2 = '1', $3 = '2'
+2026-09-10 12:45:19.242 UTC [846] LOG:  duration: 12.461 ms  execute <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1 AND t.status = $2 AND t.priority = $3
+2026-09-10 12:45:19.242 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e', $2 = '1', $3 = '2'
+2026-09-10 12:45:19.243 UTC [846] LOG:  duration: 0.046 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.243 UTC [846] LOG:  duration: 0.170 ms  parse <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1 AND t.status = $2 AND t.priority = $3
+	    ORDER BY t.created_at DESC
+	    LIMIT $4 OFFSET $5
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.244 UTC [846] LOG:  duration: 0.730 ms  bind <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1 AND t.status = $2 AND t.priority = $3
+	    ORDER BY t.created_at DESC
+	    LIMIT $4 OFFSET $5
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.244 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e', $2 = '1', $3 = '2', $4 = '10', $5 = '0'
+2026-09-10 12:45:19.245 UTC [846] LOG:  duration: 0.463 ms  execute <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1 AND t.status = $2 AND t.priority = $3
+	    ORDER BY t.created_at DESC
+	    LIMIT $4 OFFSET $5
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.245 UTC [846] DETAIL:  parameters: $1 = '335fc496-f143-433c-b8b5-48277f10419e', $2 = '1', $3 = '2', $4 = '10', $5 = '0'
+2026-09-10 12:45:19.313 UTC [846] LOG:  duration: 0.080 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.313 UTC [846] LOG:  duration: 0.093 ms  parse <unnamed>: SELECT t.status AS "Status", count(*)::int AS "Count", count(*) FILTER (WHERE t.due_date < $1 AND t.status IN (0, 1))::int AS "OverdueCount"
+	FROM tasks AS t
+	WHERE t.user_id = $2
+	GROUP BY t.status
+	ORDER BY t.status
+2026-09-10 12:45:19.313 UTC [846] LOG:  duration: 0.181 ms  bind <unnamed>: SELECT t.status AS "Status", count(*)::int AS "Count", count(*) FILTER (WHERE t.due_date < $1 AND t.status IN (0, 1))::int AS "OverdueCount"
+	FROM tasks AS t
+	WHERE t.user_id = $2
+	GROUP BY t.status
+	ORDER BY t.status
+2026-09-10 12:45:19.313 UTC [846] DETAIL:  parameters: $1 = '2026-09-10 12:45:19.312608+00', $2 = '335fc496-f143-433c-b8b5-48277f10419e'
+2026-09-10 12:45:19.315 UTC [846] LOG:  duration: 2.184 ms  execute <unnamed>: SELECT t.status AS "Status", count(*)::int AS "Count", count(*) FILTER (WHERE t.due_date < $1 AND t.status IN (0, 1))::int AS "OverdueCount"
+	FROM tasks AS t
+	WHERE t.user_id = $2
+	GROUP BY t.status
+	ORDER BY t.status
+2026-09-10 12:45:19.315 UTC [846] DETAIL:  parameters: $1 = '2026-09-10 12:45:19.312608+00', $2 = '335fc496-f143-433c-b8b5-48277f10419e'
+2026-09-10 12:45:19.388 UTC [846] LOG:  duration: 0.068 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.388 UTC [846] LOG:  duration: 0.118 ms  parse <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1
+2026-09-10 12:45:19.388 UTC [846] LOG:  duration: 0.113 ms  bind <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1
+2026-09-10 12:45:19.388 UTC [846] DETAIL:  parameters: $1 = '0cce6e13-904a-4ab5-9785-2fe444858bd2'
+2026-09-10 12:45:19.388 UTC [846] LOG:  duration: 0.066 ms  execute <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.user_id = $1
+2026-09-10 12:45:19.388 UTC [846] DETAIL:  parameters: $1 = '0cce6e13-904a-4ab5-9785-2fe444858bd2'
+2026-09-10 12:45:19.389 UTC [846] LOG:  duration: 0.044 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.389 UTC [846] LOG:  duration: 0.191 ms  parse <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.390 UTC [846] LOG:  duration: 0.648 ms  bind <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.390 UTC [846] DETAIL:  parameters: $1 = '0cce6e13-904a-4ab5-9785-2fe444858bd2', $2 = '10', $3 = '0'
+2026-09-10 12:45:19.390 UTC [846] LOG:  duration: 0.342 ms  execute <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.user_id = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.390 UTC [846] DETAIL:  parameters: $1 = '0cce6e13-904a-4ab5-9785-2fe444858bd2', $2 = '10', $3 = '0'
+2026-09-10 12:45:19.460 UTC [846] LOG:  duration: 0.110 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.460 UTC [846] LOG:  duration: 0.056 ms  parse <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+2026-09-10 12:45:19.460 UTC [846] LOG:  duration: 0.099 ms  bind <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+2026-09-10 12:45:19.482 UTC [846] LOG:  duration: 21.988 ms  execute <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+2026-09-10 12:45:19.484 UTC [846] LOG:  duration: 0.071 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.484 UTC [846] LOG:  duration: 0.224 ms  parse <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    ORDER BY t.created_at DESC
+	    LIMIT $1 OFFSET $2
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.485 UTC [846] LOG:  duration: 0.857 ms  bind <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    ORDER BY t.created_at DESC
+	    LIMIT $1 OFFSET $2
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.485 UTC [846] DETAIL:  parameters: $1 = '10', $2 = '0'
+2026-09-10 12:45:19.485 UTC [846] LOG:  duration: 0.454 ms  execute <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    ORDER BY t.created_at DESC
+	    LIMIT $1 OFFSET $2
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.485 UTC [846] DETAIL:  parameters: $1 = '10', $2 = '0'
+2026-09-10 12:45:19.555 UTC [846] LOG:  duration: 0.112 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.555 UTC [846] LOG:  duration: 0.068 ms  parse <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.status = $1
+2026-09-10 12:45:19.555 UTC [846] LOG:  duration: 0.104 ms  bind <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.status = $1
+2026-09-10 12:45:19.555 UTC [846] DETAIL:  parameters: $1 = '0'
+2026-09-10 12:45:19.564 UTC [846] LOG:  duration: 9.296 ms  execute <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.status = $1
+2026-09-10 12:45:19.564 UTC [846] DETAIL:  parameters: $1 = '0'
+2026-09-10 12:45:19.566 UTC [846] LOG:  duration: 0.045 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.566 UTC [846] LOG:  duration: 0.205 ms  parse <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.status = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.567 UTC [846] LOG:  duration: 0.814 ms  bind <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.status = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.567 UTC [846] DETAIL:  parameters: $1 = '0', $2 = '10', $3 = '0'
+2026-09-10 12:45:19.567 UTC [846] LOG:  duration: 0.408 ms  execute <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.status = $1
+	    ORDER BY t.created_at DESC
+	    LIMIT $2 OFFSET $3
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 12:45:19.567 UTC [846] DETAIL:  parameters: $1 = '0', $2 = '10', $3 = '0'
+2026-09-10 12:45:19.630 UTC [846] LOG:  duration: 0.094 ms  statement: DISCARD ALL
+2026-09-10 12:45:19.630 UTC [846] LOG:  duration: 0.091 ms  parse <unnamed>: SELECT t.status AS "Status", count(*)::int AS "Count", count(*) FILTER (WHERE t.due_date < $1 AND t.status IN (0, 1))::int AS "OverdueCount"
+	FROM tasks AS t
+	GROUP BY t.status
+	ORDER BY t.status
+2026-09-10 12:45:19.630 UTC [846] LOG:  duration: 0.164 ms  bind <unnamed>: SELECT t.status AS "Status", count(*)::int AS "Count", count(*) FILTER (WHERE t.due_date < $1 AND t.status IN (0, 1))::int AS "OverdueCount"
+	FROM tasks AS t
+	GROUP BY t.status
+	ORDER BY t.status
+2026-09-10 12:45:19.630 UTC [846] DETAIL:  parameters: $1 = '2026-09-10 12:45:19.629803+00'
+2026-09-10 12:45:19.696 UTC [846] LOG:  duration: 65.999 ms  execute <unnamed>: SELECT t.status AS "Status", count(*)::int AS "Count", count(*) FILTER (WHERE t.due_date < $1 AND t.status IN (0, 1))::int AS "OverdueCount"
+	FROM tasks AS t
+	GROUP BY t.status
+	ORDER BY t.status
+2026-09-10 12:45:19.696 UTC [846] DETAIL:  parameters: $1 = '2026-09-10 12:45:19.629803+00'

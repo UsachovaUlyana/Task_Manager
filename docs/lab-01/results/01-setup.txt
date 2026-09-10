@@ -1,0 +1,31 @@
+=== Задание 1. Создание таблицы orders
+DROP TABLE
+NOTICE:  table "orders" does not exist, skipping
+CREATE TABLE
+=== Задание 2. Генерация 1 000 000 записей
+Timing is on.
+INSERT 0 1000000
+Time: 3584.437 ms (00:03.584)
+Timing is off.
+ANALYZE
+  rows   | table_size | indexes_size 
+---------+------------+--------------
+ 1000000 | 85 MB      | 21 MB
+(1 row)
+
+--- среда выполнения
+                                         version                                          
+------------------------------------------------------------------------------------------
+ PostgreSQL 16.14 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+              name               | setting | unit 
+---------------------------------+---------+------
+ effective_cache_size            | 524288  | 8kB
+ max_parallel_workers_per_gather | 2       | 
+ random_page_cost                | 4       | 
+ seq_page_cost                   | 1       | 
+ shared_buffers                  | 16384   | 8kB
+ work_mem                        | 4096    | kB
+(6 rows)
+

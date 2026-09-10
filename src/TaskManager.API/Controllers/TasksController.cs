@@ -62,6 +62,34 @@ public class TasksController : ControllerBase
     }
 
     /// <summary>
+    /// Gets task counts grouped by status.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The number of tasks and overdue tasks per status.</returns>
+    /// <remarks>
+    /// - Admin and API Key users get statistics for all tasks.
+    /// - Regular users get statistics for their own tasks.
+    /// </remarks>
+    /// <response code="200">Returns the number of tasks per status.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    [HttpGet("stats")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<TaskStatusStatsDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<TaskStatusStatsDto>>>> GetStats(
+        CancellationToken cancellationToken)
+    {
+        Guid? userId = null;
+
+        if (!User.IsInRole("Admin") && !User.IsInRole("ApiKey"))
+        {
+            userId = GetCurrentUserId();
+        }
+
+        var stats = await _taskService.GetStatusStatsAsync(userId, cancellationToken);
+        return Ok(ApiResponse<IReadOnlyList<TaskStatusStatsDto>>.Ok(stats));
+    }
+
+    /// <summary>
     /// Gets a task by ID.
     /// </summary>
     /// <param name="id">The task ID.</param>

@@ -1,0 +1,65 @@
+Timing is on.
+SET
+Time: 0.280 ms
+BEGIN
+Time: 0.083 ms
+>>> users
+INSERT 0 10000
+Time: 699.732 ms
+INSERT 0 1
+Time: 0.438 ms
+SELECT 10000
+Time: 26.474 ms
+Time: 0.829 ms
+>>> projects
+CREATE TABLE
+Time: 2.407 ms
+INSERT 0 1000
+Time: 7.565 ms
+Time: 0.382 ms
+>>> tags
+INSERT 0 50
+Time: 6.474 ms
+SELECT 50
+Time: 1.186 ms
+Time: 0.288 ms
+>>> user_projects (M:M): каждый пользователь в 1-3 проектах
+INSERT 0 19988
+Time: 1514.744 ms (00:01.515)
+>>> tasks
+INSERT 0 1000000
+Time: 57601.760 ms (00:57.602)
+>>> task_tags (M:M): у ~64% задач 1-2 тега
+INSERT 0 797847
+Time: 67843.372 ms (01:07.843)
+COMMIT
+Time: 24.121 ms
+ANALYZE
+Time: 41.747 ms
+ANALYZE
+Time: 3.799 ms
+ANALYZE
+Time: 1.532 ms
+ANALYZE
+Time: 22.423 ms
+ANALYZE
+Time: 265.150 ms
+ANALYZE
+Time: 88.339 ms
+Timing is off.
+>>> итог
+  table_name   |  rows   
+---------------+---------
+ tags          |      50
+ projects      |    1000
+ users         |   10001
+ user_projects |   19988
+ task_tags     |  797847
+ tasks         | 1000000
+(6 rows)
+
+ tasks_table | tasks_indexes 
+-------------+---------------
+ 135 MB      | 87 MB
+(1 row)
+

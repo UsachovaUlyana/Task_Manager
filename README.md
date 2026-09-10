@@ -11,6 +11,10 @@ REST API сервис для управления задачами, постро
 - [Быстрый старт](#быстрый-старт)
 - [Запуск после клонирования с GitHub](#запуск-после-клонирования-с-github)
 - [API Endpoints](#api-endpoints)
+- [Основная сущность для масштабирования](#основная-сущность-для-масштабирования)
+- [Сложные SQL-запросы](#сложные-sql-запросы)
+- [Генерация данных](#генерация-данных)
+- [Индексы (ЛР №1)](#индексы-лр-1)
 - [Аутентификация и авторизация](#аутентификация-и-авторизация)
 - [Кэширование](#кэширование)
 - [Мониторинг и метрики](#мониторинг-и-метрики)
@@ -116,7 +120,16 @@ TaskManager/
 │   ├── prometheus/                   # Конфигурация Prometheus
 │   └── grafana/                      # Дашборды и источники данных
 │
-└── docker-compose.yml                # Инфраструктура в Docker
+├── scripts/
+│   ├── generate-data.sql             # Массовая генерация тестовых данных
+│   └── lab-01/                       # Скрипты экспериментов ЛР №1 (индексы)
+│
+├── docs/
+│   ├── lab-01-indexes.md             # Отчёт по ЛР №1
+│   └── lab-01/results/               # Сырые результаты EXPLAIN ANALYZE
+│
+├── Dockerfile                        # Образ API
+└── docker-compose.yml                # Весь проект в Docker
 ```
 
 ### Принципы архитектуры
@@ -197,27 +210,28 @@ TaskManager/
 
 ### Предварительные требования
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- [Docker](https://www.docker.com/get-started) и Docker Compose
-- (Опционально) Visual Studio 2022 или VS Code
+- [Docker](https://www.docker.com/get-started) и Docker Compose v2
+- (Опционально, для разработки) [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0), Visual Studio 2022 или VS Code
 
-### 1. Запуск инфраструктуры
+### 1. Запуск всего проекта одной командой
 
 ```bash
 cd TaskManager
-docker-compose up -d
+docker compose up -d --build
 ```
 
 Будут запущены:
 - **PostgreSQL** — порт 5432 (логин: taskmanager, пароль: taskmanager_password)
+- **Liquibase** — автоматически применит миграции и завершится
+- **API** — порт 5000, стартует после успешного применения миграций
 - **Redis** — порт 6379
 - **Prometheus** — порт 9090
 - **Grafana** — порт 3000 (логин: admin, пароль: admin)
-- **Liquibase** — автоматически применит миграции
 
-### 2. Запуск API
+### 2. (Опционально) Запуск API локально для отладки
 
 ```bash
+docker compose stop api        # освободить порт 5000
 cd src/TaskManager.API
 dotnet run
 ```
@@ -258,17 +272,16 @@ git clone https://github.com/UsachovaUlyana/TaskManager.git
 cd TaskManager
 ```
 
-#### Шаг 2: Запуск Docker инфраструктуры
+#### Шаг 2: Запуск проекта
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
 ```
 
-Дождитесь запуска всех контейнеров (около 30-60 секунд):
+Первая сборка образа API занимает пару минут. Проверить статус контейнеров:
 
 ```bash
-# Проверить статус контейнеров
-docker-compose ps
+docker compose ps -a
 ```
 
 Ожидаемый результат — все контейнеры в статусе `Up` (кроме liquibase, который завершится после миграций):
@@ -277,18 +290,15 @@ docker-compose ps
 NAME                     STATUS
 taskmanager-postgres     Up (healthy)
 taskmanager-redis        Up (healthy)
+taskmanager-api          Up
 taskmanager-prometheus   Up
 taskmanager-grafana      Up
 taskmanager-liquibase    Exited (0)   ← это нормально!
 ```
 
-#### Шаг 3: Запуск .NET API
+#### Шаг 3: (Опционально) Генерация большого объёма данных
 
-```bash
-cd src/TaskManager.API
-dotnet restore
-dotnet run
-```
+См. раздел [Генерация данных](#генерация-данных).
 
 #### Шаг 4: Проверка работоспособности
 
@@ -375,6 +385,7 @@ docker-compose down -v
 | Метод | Endpoint | Описание | Авторизация |
 |-------|----------|----------|-------------|
 | GET | `/api/tasks` | Получить список задач (с пагинацией и фильтрацией) | JWT/ApiKey |
+| GET | `/api/tasks/stats` | Количество задач и просроченных задач по статусам (`GROUP BY`) | JWT/ApiKey |
 | GET | `/api/tasks/{id}` | Получить задачу по ID | JWT/ApiKey |
 | POST | `/api/tasks` | Создать задачу | JWT/ApiKey |
 | PUT | `/api/tasks/{id}` | Обновить задачу | JWT/ApiKey |
@@ -388,6 +399,9 @@ docker-compose down -v
 - `dueDateTo` — максимальная дата выполнения
 - `page` — номер страницы (по умолчанию 1)
 - `pageSize` — размер страницы (по умолчанию 10)
+- `sort` — сортировка: `created_at`, `due_date`, `priority`, `title`; минус перед полем — по убыванию (по умолчанию `-created_at`, сначала новые)
+
+Те же параметры принимают `GET /api/projects/{id}/tasks` и `GET /api/users/{id}/tasks`.
 
 ### Проекты (`/api/projects`)
 
@@ -395,6 +409,7 @@ docker-compose down -v
 |-------|----------|----------|-------------|
 | GET | `/api/projects` | Получить список проектов | JWT/ApiKey |
 | GET | `/api/projects/{id}` | Получить проект по ID | JWT/ApiKey |
+| GET | `/api/projects/{id}/tasks` | Задачи проекта (фильтры, сортировка, пагинация) | JWT/ApiKey (участник проекта) |
 | POST | `/api/projects` | Создать проект | JWT/ApiKey |
 | PUT | `/api/projects/{id}` | Обновить проект | JWT/ApiKey |
 | DELETE | `/api/projects/{id}` | Удалить проект | JWT (Admin) |
@@ -417,8 +432,105 @@ docker-compose down -v
 |-------|----------|----------|-------------|
 | GET | `/api/users` | Получить список пользователей | JWT (Admin) |
 | GET | `/api/users/{id}` | Получить пользователя по ID | JWT (Admin) |
+| GET | `/api/users/{id}/tasks` | Задачи пользователя (фильтры, сортировка, пагинация) | JWT (Admin) |
 | POST | `/api/users` | Создать пользователя | JWT (Admin) |
 | DELETE | `/api/users/{id}` | Удалить пользователя | JWT (Admin) |
+
+---
+
+## Основная сущность для масштабирования
+
+**Основная сущность для масштабирования:** `tasks`
+
+**Почему она подходит:** задачи — самая «горячая» таблица сервиса. Пользователи, проекты и теги создаются редко, а задачи — постоянно: у каждого пользователя их десятки и сотни, у активных — тысячи, и после завершения они не удаляются (история нужна для статистики). Таблица растёт вместе с числом пользователей и временем, через неё проходят все основные запросы (список задач с фильтрами и пагинацией, статистика по статусам). У неё есть `created_at` — ключ для будущего партиционирования по времени — и `user_id` — естественный ключ шардирования.
+
+## Сложные SQL-запросы
+
+Все запросы ниже выполняет сам сервис. Текст запросов EF Core снят из лога PostgreSQL (`docs/lab-01/results/part2-01-captured-sql.txt`); список колонок сокращён.
+
+**JOIN 1. Страница задач пользователя** — `GET /api/tasks`, `TaskRepository.GetByUserIdAsync`: задачи, проект и теги (M:M через `task_tags`).
+
+```sql
+SELECT t0.*, p.*, t1.*
+FROM (
+    SELECT t.* FROM tasks AS t
+    WHERE t.user_id = $1                      -- + фильтры status / priority / project_id / due_date
+    ORDER BY t.created_at DESC
+    LIMIT $2 OFFSET $3
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id
+ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id;
+```
+
+**JOIN 2. Все задачи с автором** — `GET /api/tasks` для Admin и API Key, `TaskRepository.GetAllFilteredAsync`: тот же запрос без условия на `user_id` и с `INNER JOIN users AS u ON t0.user_id = u.id`.
+
+**JOIN 3. Теги задачи** — `TaskTagRepository.GetTagsByTaskIdAsync` (Dapper):
+
+```sql
+SELECT t.id, t.name, t.color, t.created_at AS CreatedAt
+FROM tags t
+INNER JOIN task_tags tt ON t.id = tt.tag_id
+WHERE tt.task_id = @TaskId;
+```
+
+**Агрегация. Количество задач по статусам** — `GET /api/tasks/stats`, `TaskRepository.GetStatusStatsAsync`:
+
+```sql
+SELECT t.status, count(*)::int AS "Count",
+       count(*) FILTER (WHERE t.due_date < $1 AND t.status IN (0, 1))::int AS "OverdueCount"
+FROM tasks AS t
+WHERE t.user_id = $2                          -- только для обычного пользователя
+GROUP BY t.status
+ORDER BY t.status;
+```
+
+Кроме того, каждая страница `GET /api/tasks` сопровождается `SELECT count(*) FROM tasks WHERE …` для пагинации.
+
+## Генерация данных
+
+Небольшой набор данных для проверки API создаётся через Swagger (`POST /api/auth/register`, `POST /api/tasks`). Для экспериментов с производительностью есть SQL-генератор:
+
+```bash
+docker compose up -d
+docker compose exec -T postgres psql -U taskmanager -d taskmanager_db -f /scripts/generate-data.sql
+```
+
+По умолчанию создаётся 10 000 пользователей, 1 000 проектов, 50 тегов, ~20 000 связей пользователь–проект, 1 000 000 задач и ~800 000 связей задача–тег (около 2.5 минут). Объёмы задаются переменными psql:
+
+```bash
+docker compose exec -T postgres psql -U taskmanager -d taskmanager_db \
+  -v users=100000 -v tasks=5000000 -f /scripts/generate-data.sql
+```
+
+- логины `gen_user_1` … `gen_user_N` и администратор `gen_admin`, пароль у всех `Password123!`;
+- задачи распределены по пользователям неравномерно, как в реальном сервисе: `gen_user_1` получает ~1% всех задач (≈10 000), типичный пользователь — около сотни;
+- статусы: Pending 20%, InProgress 20%, Completed 55%, Cancelled 5%; приоритеты: Low 30%, Medium 40%, High 22%, Critical 8%.
+
+> В Git Bash на Windows перед командой с путём `/scripts/...` добавьте `MSYS_NO_PATHCONV=1`, иначе путь будет искажён.
+
+## Индексы (ЛР №1)
+
+Отчёт с планами выполнения до и после — [docs/lab-01-indexes.md](docs/lab-01-indexes.md); он же оформлен по ГОСТ 7.32-2017 — [docs/lab-01-report.docx](docs/lab-01-report.docx) ([PDF](docs/lab-01-report.pdf)).
+
+Изменения схемы вносятся миграциями Liquibase и применяются автоматически при `docker compose up`:
+
+| Миграция | Что делает | Зачем |
+|---|---|---|
+| `009-create-tasks-created-at-indexes.xml` | создаёт `idx_tasks_user_id_created_at (user_id, created_at DESC)` и `idx_tasks_created_at (created_at DESC)`, удаляет избыточный `idx_tasks_user_id` | `GET /api/tasks` всегда сортирует по `created_at DESC`: страница администратора 118 ms → 0.55 ms, страница активного пользователя 3.8 ms → 0.35 ms (1 млн задач) |
+| `010-drop-duplicate-indexes.xml` | удаляет 7 индексов, дублирующих UNIQUE-ограничения и первичные ключи | меньше работы при каждой записи, −32 MB |
+
+Повторить эксперименты:
+
+```bash
+bash scripts/lab-01/run-all.sh             # часть 1: тестовая БД lab01, результаты в docs/lab-01/results
+bash scripts/lab-01/part2-capture-sql.sh   # часть 2: SQL из лога PostgreSQL и время ответа API
+docker compose exec -T postgres psql -U taskmanager -d taskmanager_db < scripts/lab-01/part2-explain.sql
+```
 
 ---
 

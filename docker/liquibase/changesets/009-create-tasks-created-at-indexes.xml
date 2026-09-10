@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        ЛР №1 (docs/lab-01-indexes.md, задания 27-29).
+        GET /api/tasks всегда сортирует по created_at DESC и берёт одну страницу (LIMIT/OFFSET):
+          - обычный пользователь: WHERE user_id = ? ORDER BY created_at DESC  -> (user_id, created_at DESC)
+          - Admin / API Key:      ORDER BY created_at DESC [WHERE status = ?] -> (created_at DESC)
+        Без этих индексов PostgreSQL читает все строки пользователя (или всю таблицу) и сортирует их.
+
+        CONCURRENTLY не блокирует запись в tasks во время построения индекса,
+        поэтому changeSet выполняется вне транзакции.
+    -->
+    <changeSet id="009-create-tasks-created-at-indexes" author="taskmanager" runInTransaction="false">
+        <sql>CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_user_id_created_at ON tasks (user_id, created_at DESC)</sql>
+        <sql>CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_created_at ON tasks (created_at DESC)</sql>
+
+        <rollback>
+            <sql>DROP INDEX CONCURRENTLY IF EXISTS idx_tasks_created_at</sql>
+            <sql>DROP INDEX CONCURRENTLY IF EXISTS idx_tasks_user_id_created_at</sql>
+        </rollback>
+    </changeSet>
+
+    <!--
+        idx_tasks_user_id (user_id) стал избыточным: любой поиск по user_id (в том числе
+        проверка внешнего ключа при каскадном удалении пользователя) обслуживает левый
+        префикс idx_tasks_user_id_created_at. Лишний индекс только замедляет запись.
+    -->
+    <changeSet id="009-drop-redundant-idx-tasks-user-id" author="taskmanager" runInTransaction="false">
+        <sql>DROP INDEX CONCURRENTLY IF EXISTS idx_tasks_user_id</sql>
+
+        <rollback>
+            <sql>CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_user_id ON tasks (user_id)</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

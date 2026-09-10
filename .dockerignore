@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/logs/
+.git/
+.vs/
+.idea/
+.vscode/
+tests/
+docs/
+docker/
+scripts/
+*.md

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskManager.Application.Common;
 using TaskManager.Application.DTOs.Common;
+using TaskManager.Application.DTOs.Tasks;
 using TaskManager.Application.DTOs.Users;
 using TaskManager.Application.Exceptions;
 using TaskManager.Application.Interfaces;
@@ -18,14 +19,17 @@ namespace TaskManager.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly ITaskService _taskService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="UsersController"/> class.
     /// </summary>
     /// <param name="userService">The user service.</param>
-    public UsersController(IUserService userService)
+    /// <param name="taskService">The task service.</param>
+    public UsersController(IUserService userService, ITaskService taskService)
     {
         _userService = userService;
+        _taskService = taskService;
     }
 
     /// <summary>
@@ -77,6 +81,39 @@ public class UsersController : ControllerBase
         }
 
         return Ok(ApiResponse<UserDto>.Ok(user));
+    }
+
+    /// <summary>
+    /// Gets tasks of a user with filtering, sorting and pagination.
+    /// </summary>
+    /// <param name="id">The user ID.</param>
+    /// <param name="filter">The filter parameters.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A paginated list of the user's tasks.</returns>
+    /// <response code="200">Returns the paginated list of tasks.</response>
+    /// <response code="400">If the sort parameter is invalid.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="403">If the user is not an admin.</response>
+    /// <response code="404">If the user is not found.</response>
+    [HttpGet("{id:guid}/tasks")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResult<TaskDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<PagedResult<TaskDto>>>> GetUserTasks(
+        Guid id,
+        [FromQuery] TaskFilterRequest filter,
+        CancellationToken cancellationToken)
+    {
+        var user = await _userService.GetByIdAsync(id, cancellationToken);
+        if (user == null)
+        {
+            throw new NotFoundException("User", id);
+        }
+
+        var result = await _taskService.GetTasksAsync(filter, id, cancellationToken);
+        return Ok(ApiResponse<PagedResult<TaskDto>>.Ok(result));
     }
 
     /// <summary>

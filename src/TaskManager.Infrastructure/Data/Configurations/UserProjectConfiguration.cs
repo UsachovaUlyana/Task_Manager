@@ -30,7 +30,6 @@ public class UserProjectConfiguration : IEntityTypeConfiguration<UserProject>
             .HasColumnName("joined_at")
             .IsRequired();
 
-        builder.HasIndex(up => up.UserId);
         builder.HasIndex(up => up.ProjectId);
     }
 }

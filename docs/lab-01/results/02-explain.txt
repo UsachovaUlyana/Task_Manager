@@ -1,0 +1,67 @@
+=== Задание 3. EXPLAIN (запрос не выполняется)
+Timing is on.
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Gather  (cost=1000.00..17035.43 rows=11 width=53)
+   Workers Planned: 2
+   ->  Parallel Seq Scan on orders  (cost=0.00..16034.33 rows=5 width=53)
+         Filter: (user_id = 123)
+(4 rows)
+
+Time: 1.102 ms
+=== Задание 4. EXPLAIN ANALYZE (запрос выполняется)
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..17035.43 rows=11 width=53) (actual time=3.435..31.715 rows=15 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on orders  (cost=0.00..16034.33 rows=5 width=53) (actual time=5.024..16.519 rows=5 loops=3)
+         Filter: (user_id = 123)
+         Rows Removed by Filter: 333328
+ Planning Time: 0.042 ms
+ Execution Time: 31.739 ms
+(8 rows)
+
+Time: 32.076 ms
+Timing is off.
+--- то же с BUFFERS: сколько страниц прочитано
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..17035.43 rows=11 width=53) (actual time=3.884..23.507 rows=15 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=10826
+   ->  Parallel Seq Scan on orders  (cost=0.00..16034.33 rows=5 width=53) (actual time=2.162..16.511 rows=5 loops=3)
+         Filter: (user_id = 123)
+         Rows Removed by Filter: 333328
+         Buffers: shared hit=10826
+ Planning Time: 0.050 ms
+ Execution Time: 23.533 ms
+(10 rows)
+
+=== Задание 5. Вся таблица
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..20826.00 rows=1000000 width=53) (actual time=0.008..58.694 rows=1000000 loops=1)
+ Planning Time: 0.039 ms
+ Execution Time: 86.825 ms
+(3 rows)
+
+--- накладные расходы замера времени: то же с TIMING OFF
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..20826.00 rows=1000000 width=53) (actual rows=1000000 loops=1)
+ Planning Time: 0.038 ms
+ Execution Time: 40.225 ms
+(3 rows)
+
+=== Задание 5. amount > 0 (условие истинно почти для всех строк)
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..23326.00 rows=999900 width=53) (actual time=0.009..114.358 rows=999999 loops=1)
+   Filter: (amount > '0'::numeric)
+   Rows Removed by Filter: 1
+ Planning Time: 0.137 ms
+ Execution Time: 144.263 ms
+(5 rows)
+

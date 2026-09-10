@@ -31,6 +31,12 @@ public class TaskFilterRequest
     public DateTime? DueDateTo { get; set; }
 
     /// <summary>
+    /// Gets or sets the sort order: created_at, due_date, priority or title;
+    /// prefix with "-" for descending order. Defaults to -created_at (newest first).
+    /// </summary>
+    public string? Sort { get; set; }
+
+    /// <summary>
     /// Gets or sets the page number (1-based).
     /// </summary>
     public int Page { get; set; } = 1;

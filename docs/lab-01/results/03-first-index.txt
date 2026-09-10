@@ -1,0 +1,50 @@
+=== Задание 6. ДО индекса
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..17035.43 rows=11 width=53) (actual time=5.611..32.505 rows=15 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on orders  (cost=0.00..16034.33 rows=5 width=53) (actual time=4.734..24.049 rows=5 loops=3)
+         Filter: (user_id = 123)
+         Rows Removed by Filter: 333328
+ Planning Time: 0.865 ms
+ Execution Time: 32.701 ms
+(8 rows)
+
+=== Задание 6. Создание idx_orders_user_id
+Timing is on.
+CREATE INDEX
+Time: 367.654 ms
+Timing is off.
+ANALYZE
+=== Задание 6. ПОСЛЕ индекса
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=53) (actual time=0.190..0.216 rows=15 loops=1)
+   Recheck Cond: (user_id = 123)
+   Heap Blocks: exact=15
+   ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.182..0.182 rows=15 loops=1)
+         Index Cond: (user_id = 123)
+ Planning Time: 0.627 ms
+ Execution Time: 0.273 ms
+(7 rows)
+
+--- с BUFFERS
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=53) (actual time=0.033..0.055 rows=15 loops=1)
+   Recheck Cond: (user_id = 123)
+   Heap Blocks: exact=15
+   Buffers: shared hit=18
+   ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.022..0.022 rows=15 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared hit=3
+ Planning Time: 0.053 ms
+ Execution Time: 0.124 ms
+(9 rows)
+
+ idx_orders_user_id_size 
+-------------------------
+ 9088 kB
+(1 row)
+
