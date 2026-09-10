@@ -15,6 +15,7 @@ REST API сервис для управления задачами, постро
 - [Сложные SQL-запросы](#сложные-sql-запросы)
 - [Генерация данных](#генерация-данных)
 - [Индексы (ЛР №1)](#индексы-лр-1)
+- [Рост данных (ЛР №2)](#рост-данных-лр-2)
 - [Аутентификация и авторизация](#аутентификация-и-авторизация)
 - [Кэширование](#кэширование)
 - [Мониторинг и метрики](#мониторинг-и-метрики)
@@ -507,6 +508,7 @@ docker compose exec -T postgres psql -U taskmanager -d taskmanager_db \
   -v users=100000 -v tasks=5000000 -f /scripts/generate-data.sql
 ```
 
+- повторный запуск дописывает задачи, не дублируя пользователей, проекты и теги;
 - логины `gen_user_1` … `gen_user_N` и администратор `gen_admin`, пароль у всех `Password123!`;
 - задачи распределены по пользователям неравномерно, как в реальном сервисе: `gen_user_1` получает ~1% всех задач (≈10 000), типичный пользователь — около сотни;
 - статусы: Pending 20%, InProgress 20%, Completed 55%, Cancelled 5%; приоритеты: Low 30%, Medium 40%, High 22%, Critical 8%.
@@ -530,6 +532,29 @@ docker compose exec -T postgres psql -U taskmanager -d taskmanager_db \
 bash scripts/lab-01/run-all.sh             # часть 1: тестовая БД lab01, результаты в docs/lab-01/results
 bash scripts/lab-01/part2-capture-sql.sh   # часть 2: SQL из лога PostgreSQL и время ответа API
 docker compose exec -T postgres psql -U taskmanager -d taskmanager_db < scripts/lab-01/part2-explain.sql
+```
+
+## Рост данных (ЛР №2)
+
+Отчёт — [docs/lab-02-growth.md](docs/lab-02-growth.md); он же по ГОСТ 7.32-2017 — [docs/lab-02-report.docx](docs/lab-02-report.docx) ([PDF](docs/lab-02-report.pdf)).
+
+![Запись терминала: 10 млн строк, поиск без индекса и с индексом, агрегация за год](docs/lab-02/demo.gif)
+
+| Изменение | Зачем |
+|---|---|
+| Миграция `011-create-tasks-created-at-due-date-index.xml`: индекс `(created_at DESC)` заменён на `(created_at DESC, due_date)` | `GET /api/tasks?dueDateFrom=…&dueDateTo=…` на 5 млн задач: 2.8 s → 18.6 ms |
+| `TaskService`: даты фильтра приводятся к UTC | фильтр по сроку без часового пояса возвращал 500 |
+| `docker-compose.yml`: `shm_size: 512mb` у postgres | параллельному `VACUUM` на 10 млн строк не хватало 64 MB `/dev/shm` |
+| `scripts/generate-data.sql` можно запускать повторно | таблицу `tasks` можно растить ступенями: `-v tasks=4000000` |
+
+Для списка задач по срокам используйте `?sort=due_date` — 0.5 ms на любом объёме.
+
+Повторить эксперименты:
+
+```bash
+bash scripts/lab-02/run-part-a.sh            # часть A: таблица lab02.events до 10 млн строк (~3 мин, ~1.5 ГБ на диске)
+RESET=1 bash scripts/lab-02/run-part-b.sh    # часть B: tasks 100 тыс. → 1 млн → 5 млн (RESET=1 удаляет все задачи!)
+vhs scripts/lab-02/demo.tape                 # запись терминала (нужны vhs, ttyd, ffmpeg)
 ```
 
 ---

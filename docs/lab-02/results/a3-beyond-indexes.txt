@@ -1,0 +1,99 @@
+Output format is unaligned.
+DROP INDEX
+DROP INDEX
+psql:/scripts/lab-02/a3-beyond-indexes.sql:11: NOTICE:  index "idx_events_user_created" does not exist, skipping
+DROP TABLE
+psql:/scripts/lab-02/a3-beyond-indexes.sql:12: NOTICE:  table "events_daily" does not exist, skipping
+DELETE 0
+=== Задание 11. GROUP BY DATE(created_at) за 365 дней, 10000000 строк
+idx_events_created_at: 214 MB, построен за 4497.7 мс
+VACUUM
+--- индекс по created_at есть, VACUUM выполнен: план выбирает планировщик
+--- agg365 | 10000000 строк | индекс created_at после VACUUM
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=845830.05..1048953.21 rows=9999909 width=12) (actual time=2965.395..2965.712 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 128  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=838 read=82496
+  ->  Seq Scan on events  (cost=0.00..283335.17 rows=9999909 width=4) (actual time=65.444..2050.163 rows=9999831 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Rows Removed by Filter: 169
+        Buffers: shared hit=838 read=82496
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.159 ms
+JIT:
+  Functions: 8
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+  Timing: Generation 0.516 ms, Inlining 8.782 ms, Optimization 32.839 ms, Emission 23.776 ms, Total 65.914 ms
+Execution Time: 2967.926 ms
+
+--- запрещаем Seq Scan: читаем только индекс (Index Only Scan)
+SET
+--- agg365 | 10000000 строк | только индекс (enable_seqscan = off)
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=872181.27..1075304.36 rows=9999906 width=12) (actual time=2878.244..2878.618 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 128  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=6458421 read=27322
+  ->  Index Only Scan using idx_events_created_at on events  (cost=0.44..309686.56 rows=9999906 width=4) (actual time=47.122..2053.771 rows=9999829 loops=1)
+        Index Cond: (created_at >= (now() - '365 days'::interval))
+        Heap Fetches: 0
+        Buffers: shared hit=6458421 read=27322
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.140 ms
+JIT:
+  Functions: 7
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+  Timing: Generation 0.387 ms, Inlining 8.131 ms, Optimization 20.302 ms, Emission 18.662 ms, Total 47.483 ms
+Execution Time: 2880.850 ms
+
+RESET
+--- другой способ: дневная сводка events_daily (строится один раз, дальше дописывается)
+построение сводки events_daily, доп. индексов 0: 1647.5 мс
+ALTER TABLE
+ANALYZE
+строк в сводке: 1464, размер 192 kB
+--- agg365 | 10000000 строк | дневная сводка events_daily
+SELECT day, sum(cnt) FROM lab02.events_daily WHERE day >= (NOW() - INTERVAL '365 days')::date GROUP BY day
+HashAggregate  (cost=52.60..57.17 rows=366 width=36) (actual time=0.492..0.535 rows=366 loops=1)
+  Group Key: day
+  Batches: 1  Memory Usage: 93kB
+  Buffers: shared hit=16
+  ->  Seq Scan on events_daily  (cost=0.00..45.28 rows=1464 width=12) (actual time=0.004..0.256 rows=1464 loops=1)
+        Filter: (day >= ((now() - '365 days'::interval))::date)
+        Buffers: shared hit=16
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.051 ms
+Execution Time: 0.577 ms
+
+DROP INDEX
+=== Задание 7 на максимальном объёме: только составной индекс (без idx_events_user_id)
+idx_events_user_created: 301 MB, построен за 5455.8 мс
+ANALYZE
+--- order | 10000000 строк | только составной индекс
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=0.43..406.10 rows=100 width=36) (actual time=0.017..0.284 rows=100 loops=1)
+  Buffers: shared hit=103
+  ->  Index Scan using idx_events_user_created on events  (cost=0.43..414.21 rows=102 width=36) (actual time=0.017..0.274 rows=100 loops=1)
+        Index Cond: (user_id = 123)
+        Buffers: shared hit=103
+Planning Time: 0.035 ms
+Execution Time: 0.323 ms
+
+--- запрещаем bitmap: чтение индекса в порядке created_at DESC, без Sort
+SET
+--- order | 10000000 строк | только составной индекс, enable_bitmapscan = off
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=0.43..406.10 rows=100 width=36) (actual time=0.037..0.096 rows=100 loops=1)
+  Buffers: shared hit=103
+  ->  Index Scan using idx_events_user_created on events  (cost=0.43..414.21 rows=102 width=36) (actual time=0.036..0.087 rows=100 loops=1)
+        Index Cond: (user_id = 123)
+        Buffers: shared hit=103
+Planning Time: 0.069 ms
+Execution Time: 0.138 ms
+
+RESET
+DROP INDEX

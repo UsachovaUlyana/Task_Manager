@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        ЛР №2 (docs/lab-02-growth.md, задания 17-18).
+        GET /api/tasks?dueDateFrom=...&dueDateTo=... выполняет
+            WHERE due_date BETWEEN ... ORDER BY created_at DESC LIMIT 10.
+        Планировщик идёт по индексу created_at от новых задач к старым и проверяет срок
+        в таблице для каждой строки: на 5 млн задач — 1.19 млн строк и 2.8 с на страницу.
+        Составной индекс (created_at DESC, due_date) позволяет проверять срок прямо в индексе,
+        не читая таблицу: 21 мс. Он же обслуживает список без фильтра (ORDER BY created_at DESC),
+        поэтому заменяет idx_tasks_created_at и число индексов не растёт.
+    -->
+    <changeSet id="011-create-tasks-created-at-due-date-index" author="taskmanager" runInTransaction="false">
+        <sql>CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_created_at_due_date ON tasks (created_at DESC, due_date)</sql>
+        <sql>DROP INDEX CONCURRENTLY IF EXISTS idx_tasks_created_at</sql>
+
+        <rollback>
+            <sql>CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tasks_created_at ON tasks (created_at DESC)</sql>
+            <sql>DROP INDEX CONCURRENTLY IF EXISTS idx_tasks_created_at_due_date</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

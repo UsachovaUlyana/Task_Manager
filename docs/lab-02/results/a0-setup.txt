@@ -1,0 +1,19 @@
+DROP SCHEMA
+psql:/scripts/lab-02/a0-setup.sql:6: NOTICE:  schema "lab02" does not exist, skipping
+CREATE SCHEMA
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+       status       
+--------------------
+ схема lab02 готова
+(1 row)
+

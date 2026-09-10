@@ -15,5 +15,6 @@
     <include file="changelog/changesets/008-create-idempotency-keys-table.xml"/>
     <include file="changelog/changesets/009-create-tasks-created-at-indexes.xml"/>
     <include file="changelog/changesets/010-drop-duplicate-indexes.xml"/>
+    <include file="changelog/changesets/011-create-tasks-created-at-due-date-index.xml"/>
 
 </databaseChangeLog>

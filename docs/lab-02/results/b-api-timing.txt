@@ -1,0 +1,14 @@
+### до миграции 011 (2026-09-10 21:02:09 UTC), задач: 5000000
+GET /api/tasks?page=1&pageSize=10 -> HTTP 200, 0.016931s
+GET /api/tasks?page=1&pageSize=10 -> HTTP 200, 0.103301s
+GET /api/tasks?dueDateFrom=2026-03-14&dueDateTo=2026-03-21&page=1&pageSize=10 -> HTTP 200, 2.951157s
+GET /api/tasks?dueDateFrom=2026-03-14&dueDateTo=2026-03-21&sort=due_date&page=1&pageSize=10 -> HTTP 200, 0.028982s
+GET /api/tasks/stats -> HTTP 200, 0.324290s
+
+### после миграции 011 (2026-09-10 21:02:31 UTC), задач: 5000000
+GET /api/tasks?page=1&pageSize=10 -> HTTP 200, 0.015475s
+GET /api/tasks?page=1&pageSize=10 -> HTTP 200, 0.088581s
+GET /api/tasks?dueDateFrom=2026-03-14&dueDateTo=2026-03-21&page=1&pageSize=10 -> HTTP 200, 0.060166s
+GET /api/tasks?dueDateFrom=2026-03-14&dueDateTo=2026-03-21&sort=due_date&page=1&pageSize=10 -> HTTP 200, 0.026731s
+GET /api/tasks/stats -> HTTP 200, 0.324144s
+

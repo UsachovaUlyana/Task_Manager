@@ -47,8 +47,11 @@ public class TaskService : ITaskService
             });
         }
 
+        var dueDateFrom = ToUtc(filter.DueDateFrom);
+        var dueDateTo = ToUtc(filter.DueDateTo);
+
         var cacheKey = $"{CacheKeyPrefix}list:{userId}:{filter.Status}:{filter.Priority}:{filter.ProjectId}:" +
-                       $"{filter.DueDateFrom:O}:{filter.DueDateTo:O}:{sort.Field}:{sort.Descending}:{filter.Page}:{filter.PageSize}";
+                       $"{dueDateFrom:O}:{dueDateTo:O}:{sort.Field}:{sort.Descending}:{filter.Page}:{filter.PageSize}";
 
         var cached = await _cacheService.GetAsync<PagedResult<TaskDto>>(cacheKey, cancellationToken);
         if (cached != null)
@@ -76,13 +79,13 @@ public class TaskService : ITaskService
         {
             result = await _taskRepository.GetByUserIdAsync(
                 userId.Value, status, priority, filter.ProjectId,
-                filter.DueDateFrom, filter.DueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
+                dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
         }
         else
         {
             result = await _taskRepository.GetAllFilteredAsync(
                 status, priority, filter.ProjectId,
-                filter.DueDateFrom, filter.DueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
+                dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
         }
 
         var response = new PagedResult<TaskDto>
@@ -230,6 +233,23 @@ public class TaskService : ITaskService
             Count = s.Count,
             OverdueCount = s.OverdueCount
         }).ToList();
+    }
+
+    // Dates from the query string come without a time zone (Kind=Unspecified), and Npgsql
+    // refuses to send such values as timestamptz. Unspecified dates are treated as UTC.
+    private static DateTime? ToUtc(DateTime? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        return value.Value.Kind switch
+        {
+            DateTimeKind.Utc => value.Value,
+            DateTimeKind.Local => value.Value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+        };
     }
 
     private static TaskDto MapToDto(TaskItem task)

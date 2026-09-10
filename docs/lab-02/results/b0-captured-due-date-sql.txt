@@ -1,0 +1,63 @@
+2026-09-10 20:42:32.731 UTC [355] LOG:  duration: 0.043 ms  statement: DISCARD ALL
+2026-09-10 20:42:32.749 UTC [355] LOG:  duration: 17.445 ms  parse <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.due_date >= $1 AND t.due_date <= $2
+2026-09-10 20:42:32.751 UTC [355] LOG:  duration: 1.981 ms  bind <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.due_date >= $1 AND t.due_date <= $2
+2026-09-10 20:42:32.751 UTC [355] DETAIL:  parameters: $1 = '2026-03-01 00:00:00+00', $2 = '2026-03-08 00:00:00+00'
+2026-09-10 20:42:32.760 UTC [355] LOG:  duration: 9.039 ms  execute <unnamed>: SELECT count(*)::int
+	FROM tasks AS t
+	WHERE t.due_date >= $1 AND t.due_date <= $2
+2026-09-10 20:42:32.760 UTC [355] DETAIL:  parameters: $1 = '2026-03-01 00:00:00+00', $2 = '2026-03-08 00:00:00+00'
+2026-09-10 20:42:32.856 UTC [355] LOG:  duration: 0.059 ms  statement: DISCARD ALL
+2026-09-10 20:42:32.858 UTC [355] LOG:  duration: 1.972 ms  parse <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.due_date >= $1 AND t.due_date <= $2
+	    ORDER BY t.created_at DESC
+	    LIMIT $3 OFFSET $4
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 20:42:32.883 UTC [355] LOG:  duration: 24.609 ms  bind <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.due_date >= $1 AND t.due_date <= $2
+	    ORDER BY t.created_at DESC
+	    LIMIT $3 OFFSET $4
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 20:42:32.883 UTC [355] DETAIL:  parameters: $1 = '2026-03-01 00:00:00+00', $2 = '2026-03-08 00:00:00+00', $3 = '10', $4 = '0'
+2026-09-10 20:42:33.903 UTC [355] LOG:  duration: 1020.426 ms  execute <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+	    WHERE t.due_date >= $1 AND t.due_date <= $2
+	    ORDER BY t.created_at DESC
+	    LIMIT $3 OFFSET $4
+	) AS t0
+	LEFT JOIN projects AS p ON t0.project_id = p.id
+	INNER JOIN users AS u ON t0.user_id = u.id
+	LEFT JOIN (
+	    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+	    FROM task_tags AS t2
+	    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+	) AS t1 ON t0.id = t1.task_id
+	ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+2026-09-10 20:42:33.903 UTC [355] DETAIL:  parameters: $1 = '2026-03-01 00:00:00+00', $2 = '2026-03-08 00:00:00+00', $3 = '10', $4 = '0'

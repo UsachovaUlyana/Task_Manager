@@ -9,6 +9,8 @@
 -- Создаются пользователи gen_user_1 .. gen_user_N и администратор gen_admin, пароль у всех: Password123!
 -- Задачи распределены по пользователям неравномерно, как в реальном сервисе:
 -- gen_user_1 получает ~1% всех задач, gen_user_2 ~0.4%, у типичного пользователя — около сотни.
+-- Скрипт можно запускать повторно: пользователи, проекты, теги и участие в проектах не дублируются,
+-- а задачи (с тегами) дописываются. Так таблицу tasks можно растить ступенями: -v tasks=4000000.
 
 \set ON_ERROR_STOP on
 
@@ -59,18 +61,17 @@ WHERE username ~ '^gen_user_[0-9]+$';
 SELECT count(*) AS gen_users_count FROM gen_users \gset
 
 \echo '>>> projects'
-CREATE TEMP TABLE gen_projects (n serial, id uuid) ON COMMIT DROP;
-WITH inserted AS (
-    INSERT INTO projects (id, name, description, created_at, updated_at)
-    SELECT gen_random_uuid(),
-           'Project ' || g,
-           'Generated project #' || g,
-           now() - random() * interval '2 years',
-           now()
-    FROM generate_series(1, :projects) g
-    RETURNING id
-)
-INSERT INTO gen_projects (id) SELECT id FROM inserted;
+INSERT INTO projects (id, name, description, created_at, updated_at)
+SELECT gen_random_uuid(),
+       'Project ' || g,
+       'Generated project #' || g,
+       now() - random() * interval '2 years',
+       now()
+FROM generate_series(1, :projects) g
+WHERE NOT EXISTS (SELECT 1 FROM projects p WHERE p.description = 'Generated project #' || g);
+
+CREATE TEMP TABLE gen_projects ON COMMIT DROP AS
+SELECT row_number() OVER () AS n, id FROM projects WHERE description LIKE 'Generated project #%';
 SELECT count(*) AS gen_projects_count FROM gen_projects \gset
 
 \echo '>>> tags'
@@ -94,7 +95,8 @@ FROM (
            1 + floor(random() * :gen_projects_count)::int AS pn,
            CASE WHEN k = 1 THEN 1 ELSE 0 END AS role  -- 1 = Owner, 0 = Member
     FROM gen_users gu, generate_series(1, 3) k
-    WHERE k = 1 OR random() < 0.5
+    WHERE (k = 1 OR random() < 0.5)
+      AND NOT EXISTS (SELECT 1 FROM user_projects up WHERE up.user_id = gu.id)
 ) s
 JOIN gen_projects p ON p.n = s.pn
 ON CONFLICT DO NOTHING;
@@ -103,6 +105,8 @@ ON CONFLICT DO NOTHING;
 -- status:   Pending 20%, InProgress 20%, Completed 55%, Cancelled 5%
 -- priority: Low 30%, Medium 40%, High 22%, Critical 8%
 -- power(random(), 2) смещает выбор к пользователям с малыми номерами
+CREATE TEMP TABLE new_tasks (id uuid) ON COMMIT DROP;
+WITH inserted AS (
 INSERT INTO tasks (id, title, description, status, priority, due_date,
                    user_id, project_id, created_at, updated_at)
 SELECT gen_random_uuid(),
@@ -133,16 +137,17 @@ FROM (
     FROM generate_series(1, :tasks) g
 ) s
 JOIN gen_users u ON u.n = s.un
-LEFT JOIN gen_projects p ON p.n = s.pn;
+LEFT JOIN gen_projects p ON p.n = s.pn
+RETURNING id
+)
+INSERT INTO new_tasks SELECT id FROM inserted;
 
-\echo '>>> task_tags (M:M): у ~64% задач 1-2 тега'
+\echo '>>> task_tags (M:M): у ~64% новых задач 1-2 тега'
 INSERT INTO task_tags (task_id, tag_id)
 SELECT s.task_id, t.id
 FROM (
-    SELECT tk.id AS task_id, 1 + floor(random() * :gen_tags_count)::int AS tn
-    FROM tasks tk
-    JOIN gen_users gu ON gu.id = tk.user_id,
-    generate_series(1, 2) k
+    SELECT nt.id AS task_id, 1 + floor(random() * :gen_tags_count)::int AS tn
+    FROM new_tasks nt, generate_series(1, 2) k
     WHERE random() < 0.4
 ) s
 JOIN gen_tags t ON t.n = s.tn

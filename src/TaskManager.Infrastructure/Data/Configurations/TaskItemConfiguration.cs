@@ -57,9 +57,9 @@ public class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.HasIndex(t => new { t.UserId, t.CreatedAt })
             .IsDescending(false, true)
             .HasDatabaseName("idx_tasks_user_id_created_at");
-        builder.HasIndex(t => t.CreatedAt)
-            .IsDescending()
-            .HasDatabaseName("idx_tasks_created_at");
+        builder.HasIndex(t => new { t.CreatedAt, t.DueDate })
+            .IsDescending(true, false)
+            .HasDatabaseName("idx_tasks_created_at_due_date");
         builder.HasIndex(t => t.ProjectId);
         builder.HasIndex(t => t.Status);
         builder.HasIndex(t => t.Priority);

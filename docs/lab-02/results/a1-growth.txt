@@ -1,0 +1,1104 @@
+Output format is unaligned.
+
+==================== Объём: 10000 строк
+вставлено 10000 строк за 34.7 мс
+VACUUM
+таблица: 672 kB
+всего: только PK: 952 kB
+--- Без дополнительных индексов (задания 4, 6, 7, 8, 11)
+--- user_eq | 10000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123
+Seq Scan on events  (cost=0.00..209.00 rows=1 width=36) (actual time=0.312..0.312 rows=0 loops=1)
+  Filter: (user_id = 123)
+  Rows Removed by Filter: 10000
+  Buffers: shared hit=84
+Planning Time: 0.018 ms
+Execution Time: 0.316 ms
+
+--- day | 10000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Seq Scan on events  (cost=0.00..259.00 rows=25 width=36) (actual time=0.022..1.223 rows=18 loops=1)
+  Filter: (created_at >= (now() - '1 day'::interval))
+  Rows Removed by Filter: 9982
+  Buffers: shared hit=84
+Planning Time: 0.033 ms
+Execution Time: 1.229 ms
+
+--- half_year | 10000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..259.00 rows=4871 width=36) (actual time=0.003..1.505 rows=4869 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 5131
+  Buffers: shared hit=84
+Planning Time: 0.025 ms
+Execution Time: 1.674 ms
+
+--- order | 10000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=209.01..209.01 rows=1 width=36) (actual time=0.353..0.353 rows=0 loops=1)
+  Buffers: shared hit=84
+  ->  Sort  (cost=209.01..209.01 rows=1 width=36) (actual time=0.352..0.353 rows=0 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=84
+        ->  Seq Scan on events  (cost=0.00..209.00 rows=1 width=36) (actual time=0.348..0.348 rows=0 loops=1)
+              Filter: (user_id = 123)
+              Rows Removed by Filter: 10000
+              Buffers: shared hit=84
+Planning Time: 0.018 ms
+Execution Time: 0.378 ms
+
+--- agg30 | 10000 строк | без индекса
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+HashAggregate  (cost=263.11..263.15 rows=4 width=15) (actual time=1.422..1.423 rows=4 loops=1)
+  Group Key: event_type
+  Batches: 1  Memory Usage: 24kB
+  Buffers: shared hit=84
+  ->  Seq Scan on events  (cost=0.00..259.00 rows=821 width=7) (actual time=0.003..1.309 rows=819 loops=1)
+        Filter: (created_at >= (now() - '30 days'::interval))
+        Rows Removed by Filter: 9181
+        Buffers: shared hit=84
+Planning Time: 0.047 ms
+Execution Time: 1.433 ms
+
+--- agg365 | 10000 строк | без индекса
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=333.99..458.98 rows=9999 width=12) (actual time=3.172..3.228 rows=366 loops=1)
+  Group Key: date(created_at)
+  Batches: 1  Memory Usage: 433kB
+  Buffers: shared hit=84
+  ->  Seq Scan on events  (cost=0.00..284.00 rows=9999 width=4) (actual time=0.004..2.208 rows=10000 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Buffers: shared hit=84
+Planning Time: 0.040 ms
+Execution Time: 3.431 ms
+
+--- Индексы (user_id) и (created_at) (задания 5, 6, 8)
+idx_events_user_id: 240 kB, построен за 7.9 мс
+idx_events_created_at: 240 kB, построен за 12.5 мс
+ANALYZE
+--- user_eq | 10000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123
+Index Scan using idx_events_user_id on events  (cost=0.29..8.30 rows=1 width=36) (actual time=0.007..0.007 rows=0 loops=1)
+  Index Cond: (user_id = 123)
+  Buffers: shared hit=2
+Planning Time: 0.017 ms
+Execution Time: 0.019 ms
+
+--- day | 10000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Bitmap Heap Scan on events  (cost=4.48..59.14 rows=25 width=36) (actual time=0.012..0.019 rows=18 loops=1)
+  Recheck Cond: (created_at >= (now() - '1 day'::interval))
+  Heap Blocks: exact=16
+  Buffers: shared hit=18
+  ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..4.48 rows=25 width=0) (actual time=0.010..0.010 rows=18 loops=1)
+        Index Cond: (created_at >= (now() - '1 day'::interval))
+        Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.055 ms
+Execution Time: 0.046 ms
+
+--- half_year | 10000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..259.00 rows=4871 width=36) (actual time=0.005..1.665 rows=4869 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 5131
+  Buffers: shared hit=84
+Planning Time: 0.083 ms
+Execution Time: 1.833 ms
+
+--- order | 10000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=8.31..8.32 rows=1 width=36) (actual time=0.037..0.038 rows=0 loops=1)
+  Buffers: shared hit=2
+  ->  Sort  (cost=8.31..8.32 rows=1 width=36) (actual time=0.037..0.037 rows=0 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=2
+        ->  Index Scan using idx_events_user_id on events  (cost=0.29..8.30 rows=1 width=36) (actual time=0.021..0.022 rows=0 loops=1)
+              Index Cond: (user_id = 123)
+              Buffers: shared hit=2
+Planning Time: 0.052 ms
+Execution Time: 0.083 ms
+
+--- agg30 | 10000 строк | индексы
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+HashAggregate  (cost=121.13..121.17 rows=4 width=15) (actual time=0.277..0.278 rows=4 loops=1)
+  Group Key: event_type
+  Batches: 1  Memory Usage: 24kB
+  Buffers: shared hit=88
+  ->  Bitmap Heap Scan on events  (cost=18.65..117.02 rows=821 width=7) (actual time=0.058..0.165 rows=819 loops=1)
+        Recheck Cond: (created_at >= (now() - '30 days'::interval))
+        Heap Blocks: exact=84
+        Buffers: shared hit=88
+        ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..18.45 rows=821 width=0) (actual time=0.049..0.049 rows=819 loops=1)
+              Index Cond: (created_at >= (now() - '30 days'::interval))
+              Buffers: shared hit=4
+Planning Time: 0.031 ms
+Execution Time: 0.324 ms
+
+--- agg365 | 10000 строк | индексы
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=334.00..459.00 rows=10000 width=12) (actual time=4.194..4.282 rows=366 loops=1)
+  Group Key: date(created_at)
+  Batches: 1  Memory Usage: 433kB
+  Buffers: shared hit=84
+  ->  Seq Scan on events  (cost=0.00..284.00 rows=10000 width=4) (actual time=0.007..2.593 rows=10000 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Buffers: shared hit=84
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.145 ms
+Execution Time: 4.569 ms
+
+--- Составной индекс (user_id, created_at DESC) (задание 7)
+idx_events_user_created: 328 kB, построен за 8.4 мс
+ANALYZE
+--- order | 10000 строк | составной индекс
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=0.29..8.30 rows=1 width=36) (actual time=0.006..0.007 rows=0 loops=1)
+  Buffers: shared hit=2
+  ->  Index Scan using idx_events_user_created on events  (cost=0.29..8.30 rows=1 width=36) (actual time=0.006..0.006 rows=0 loops=1)
+        Index Cond: (user_id = 123)
+        Buffers: shared hit=2
+Planning Time: 0.022 ms
+Execution Time: 0.019 ms
+
+таблица: 672 kB
+всего: PK + 3 индекса: 1760 kB
+DROP INDEX
+
+==================== Объём: 100000 строк
+вставлено 90000 строк за 234.1 мс
+VACUUM
+таблица: 6672 kB
+всего: только PK: 8920 kB
+--- Без дополнительных индексов (задания 4, 6, 7, 8, 11)
+--- user_eq | 100000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123
+Seq Scan on events  (cost=0.00..2084.00 rows=2 width=36) (actual time=3.574..3.575 rows=0 loops=1)
+  Filter: (user_id = 123)
+  Rows Removed by Filter: 100000
+  Buffers: shared hit=834
+Planning Time: 0.038 ms
+Execution Time: 3.582 ms
+
+--- day | 100000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Seq Scan on events  (cost=0.00..2584.00 rows=273 width=36) (actual time=0.023..15.361 rows=266 loops=1)
+  Filter: (created_at >= (now() - '1 day'::interval))
+  Rows Removed by Filter: 99734
+  Buffers: shared hit=834
+Planning Time: 0.051 ms
+Execution Time: 15.393 ms
+
+--- half_year | 100000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..2584.00 rows=49833 width=36) (actual time=0.004..15.421 rows=49674 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 50326
+  Buffers: shared hit=834
+Planning Time: 0.055 ms
+Execution Time: 17.063 ms
+
+--- order | 100000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=2084.01..2084.02 rows=2 width=36) (actual time=3.424..3.426 rows=0 loops=1)
+  Buffers: shared hit=834
+  ->  Sort  (cost=2084.01..2084.02 rows=2 width=36) (actual time=3.423..3.424 rows=0 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=834
+        ->  Seq Scan on events  (cost=0.00..2084.00 rows=2 width=36) (actual time=3.417..3.418 rows=0 loops=1)
+              Filter: (user_id = 123)
+              Rows Removed by Filter: 100000
+              Buffers: shared hit=834
+Planning Time: 0.040 ms
+Execution Time: 3.456 ms
+
+--- agg30 | 100000 строк | без индекса
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+HashAggregate  (cost=2626.14..2626.18 rows=4 width=15) (actual time=14.517..14.518 rows=4 loops=1)
+  Group Key: event_type
+  Batches: 1  Memory Usage: 24kB
+  Buffers: shared hit=834
+  ->  Seq Scan on events  (cost=0.00..2584.00 rows=8427 width=7) (actual time=0.004..13.306 rows=8400 loops=1)
+        Filter: (created_at >= (now() - '30 days'::interval))
+        Rows Removed by Filter: 91600
+        Buffers: shared hit=834
+Planning Time: 0.060 ms
+Execution Time: 14.538 ms
+
+--- agg365 | 100000 строк | без индекса
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=8458.41..10489.46 rows=99990 width=12) (actual time=29.435..29.705 rows=366 loops=1)
+  Group Key: date(created_at)
+  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=834
+  ->  Seq Scan on events  (cost=0.00..2833.97 rows=99990 width=4) (actual time=0.007..19.722 rows=100000 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Buffers: shared hit=834
+Planning Time: 0.089 ms
+Execution Time: 31.011 ms
+
+--- Индексы (user_id) и (created_at) (задания 5, 6, 8)
+idx_events_user_id: 1936 kB, построен за 41.3 мс
+idx_events_created_at: 2208 kB, построен за 44.3 мс
+ANALYZE
+--- user_eq | 100000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123
+Bitmap Heap Scan on events  (cost=4.31..12.04 rows=2 width=36) (actual time=0.002..0.002 rows=0 loops=1)
+  Recheck Cond: (user_id = 123)
+  Buffers: shared hit=2
+  ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..4.31 rows=2 width=0) (actual time=0.002..0.002 rows=0 loops=1)
+        Index Cond: (user_id = 123)
+        Buffers: shared hit=2
+Planning Time: 0.016 ms
+Execution Time: 0.035 ms
+
+--- day | 100000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Bitmap Heap Scan on events  (cost=6.51..591.56 rows=285 width=36) (actual time=0.050..0.163 rows=266 loops=1)
+  Recheck Cond: (created_at >= (now() - '1 day'::interval))
+  Heap Blocks: exact=227
+  Buffers: shared hit=230
+  ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..6.44 rows=285 width=0) (actual time=0.029..0.029 rows=266 loops=1)
+        Index Cond: (created_at >= (now() - '1 day'::interval))
+        Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.073 ms
+Execution Time: 0.205 ms
+
+--- half_year | 100000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..2584.00 rows=49322 width=36) (actual time=0.004..15.916 rows=49674 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 50326
+  Buffers: shared hit=834
+Planning Time: 0.062 ms
+Execution Time: 17.547 ms
+
+--- order | 100000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=12.05..12.05 rows=2 width=36) (actual time=0.012..0.013 rows=0 loops=1)
+  Buffers: shared hit=2
+  ->  Sort  (cost=12.05..12.05 rows=2 width=36) (actual time=0.012..0.012 rows=0 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=2
+        ->  Bitmap Heap Scan on events  (cost=4.31..12.04 rows=2 width=36) (actual time=0.007..0.007 rows=0 loops=1)
+              Recheck Cond: (user_id = 123)
+              Buffers: shared hit=2
+              ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..4.31 rows=2 width=0) (actual time=0.006..0.006 rows=0 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=2
+Planning Time: 0.078 ms
+Execution Time: 0.055 ms
+
+--- agg30 | 100000 строк | индексы
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+HashAggregate  (cost=1175.38..1175.42 rows=4 width=15) (actual time=3.200..3.202 rows=4 loops=1)
+  Group Key: event_type
+  Batches: 1  Memory Usage: 24kB
+  Buffers: shared hit=859
+  ->  Bitmap Heap Scan on events  (cost=156.11..1134.21 rows=8234 width=7) (actual time=0.776..2.099 rows=8400 loops=1)
+        Recheck Cond: (created_at >= (now() - '30 days'::interval))
+        Heap Blocks: exact=834
+        Buffers: shared hit=859
+        ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..154.05 rows=8234 width=0) (actual time=0.684..0.684 rows=8400 loops=1)
+              Index Cond: (created_at >= (now() - '30 days'::interval))
+              Buffers: shared hit=25
+Planning Time: 0.051 ms
+Execution Time: 3.281 ms
+
+--- agg365 | 100000 строк | индексы
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=8459.00..10490.25 rows=100000 width=12) (actual time=29.325..29.578 rows=366 loops=1)
+  Group Key: date(created_at)
+  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=834
+  ->  Seq Scan on events  (cost=0.00..2834.00 rows=100000 width=4) (actual time=0.009..19.860 rows=100000 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Buffers: shared hit=834
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.135 ms
+Execution Time: 30.920 ms
+
+--- Составной индекс (user_id, created_at DESC) (задание 7)
+idx_events_user_created: 3104 kB, построен за 51.2 мс
+ANALYZE
+--- order | 100000 строк | составной индекс
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=12.05..12.05 rows=2 width=36) (actual time=0.007..0.007 rows=0 loops=1)
+  Buffers: shared hit=2
+  ->  Sort  (cost=12.05..12.05 rows=2 width=36) (actual time=0.006..0.007 rows=0 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=2
+        ->  Bitmap Heap Scan on events  (cost=4.31..12.04 rows=2 width=36) (actual time=0.002..0.002 rows=0 loops=1)
+              Recheck Cond: (user_id = 123)
+              Buffers: shared hit=2
+              ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..4.31 rows=2 width=0) (actual time=0.002..0.002 rows=0 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=2
+Planning Time: 0.025 ms
+Execution Time: 0.034 ms
+
+таблица: 6672 kB
+всего: PK + 3 индекса: 16 MB
+DROP INDEX
+
+==================== Объём: 1000000 строк
+вставлено 900000 строк за 2367.7 мс
+VACUUM
+таблица: 65 MB
+всего: только PK: 87 MB
+--- Без дополнительных индексов (задания 4, 6, 7, 8, 11)
+--- user_eq | 1000000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123
+Gather  (cost=1000.00..14543.43 rows=11 width=36) (actual time=5.607..19.634 rows=14 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=8334
+  ->  Parallel Seq Scan on events  (cost=0.00..13542.33 rows=5 width=36) (actual time=5.353..13.364 rows=5 loops=3)
+        Filter: (user_id = 123)
+        Rows Removed by Filter: 333329
+        Buffers: shared hit=8334
+Planning Time: 0.047 ms
+Execution Time: 19.671 ms
+
+--- day | 1000000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Gather  (cost=1000.00..16877.67 rows=2520 width=36) (actual time=0.218..52.159 rows=2720 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=8334
+  ->  Parallel Seq Scan on events  (cost=0.00..15625.67 rows=1050 width=36) (actual time=0.051..46.369 rows=907 loops=3)
+        Filter: (created_at >= (now() - '1 day'::interval))
+        Rows Removed by Filter: 332427
+        Buffers: shared hit=8334
+Planning Time: 0.051 ms
+Execution Time: 52.293 ms
+
+--- half_year | 1000000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..25834.00 rows=491844 width=36) (actual time=0.004..149.800 rows=493321 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 506679
+  Buffers: shared hit=8334
+Planning Time: 0.050 ms
+Execution Time: 165.716 ms
+
+--- order | 1000000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=14542.42..14543.58 rows=10 width=36) (actual time=16.482..19.753 rows=14 loops=1)
+  Buffers: shared hit=8406
+  ->  Gather Merge  (cost=14542.42..14543.58 rows=10 width=36) (actual time=16.481..19.750 rows=14 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=8406
+        ->  Sort  (cost=13542.39..13542.40 rows=5 width=36) (actual time=13.661..13.662 rows=5 loops=3)
+              Sort Key: created_at DESC
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=8406
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Parallel Seq Scan on events  (cost=0.00..13542.33 rows=5 width=36) (actual time=4.306..13.501 rows=5 loops=3)
+                    Filter: (user_id = 123)
+                    Rows Removed by Filter: 333329
+                    Buffers: shared hit=8334
+Planning Time: 0.063 ms
+Execution Time: 19.802 ms
+
+--- agg30 | 1000000 строк | без индекса
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+Finalize GroupAggregate  (cost=16797.28..16798.29 rows=4 width=15) (actual time=57.034..60.179 rows=4 loops=1)
+  Group Key: event_type
+  Buffers: shared hit=8350
+  ->  Gather Merge  (cost=16797.28..16798.21 rows=8 width=15) (actual time=57.028..60.171 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=8350
+        ->  Sort  (cost=15797.25..15797.26 rows=4 width=15) (actual time=52.993..52.994 rows=4 loops=3)
+              Sort Key: event_type
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=8350
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=15797.17..15797.21 rows=4 width=15) (actual time=52.952..52.953 rows=4 loops=3)
+                    Group Key: event_type
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared hit=8334
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Seq Scan on events  (cost=0.00..15625.67 rows=34301 width=7) (actual time=0.013..48.865 rows=27457 loops=3)
+                          Filter: (created_at >= (now() - '30 days'::interval))
+                          Rows Removed by Filter: 305876
+                          Buffers: shared hit=8334
+Planning Time: 0.143 ms
+Execution Time: 60.246 ms
+
+--- agg365 | 1000000 строк | без индекса
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=84578.12..104888.59 rows=999900 width=12) (actual time=289.169..289.484 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 16  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=8334
+  ->  Seq Scan on events  (cost=0.00..28333.75 rows=999900 width=4) (actual time=5.151..196.392 rows=1000000 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Buffers: shared hit=8334
+Planning Time: 0.076 ms
+JIT:
+  Functions: 8
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.527 ms, Inlining 0.000 ms, Optimization 0.213 ms, Emission 4.953 ms, Total 5.693 ms
+Execution Time: 291.932 ms
+
+--- Индексы (user_id) и (created_at) (задания 5, 6, 8)
+idx_events_user_id: 9088 kB, построен за 469.8 мс
+idx_events_created_at: 21 MB, построен за 416.3 мс
+ANALYZE
+--- user_eq | 1000000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123
+Bitmap Heap Scan on events  (cost=4.51..47.45 rows=11 width=36) (actual time=0.016..0.023 rows=14 loops=1)
+  Recheck Cond: (user_id = 123)
+  Heap Blocks: exact=14
+  Buffers: shared hit=17
+  ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.013..0.013 rows=14 loops=1)
+        Index Cond: (user_id = 123)
+        Buffers: shared hit=3
+Planning Time: 0.022 ms
+Execution Time: 0.050 ms
+
+--- day | 1000000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Bitmap Heap Scan on events  (cost=52.39..5560.21 rows=2576 width=36) (actual time=0.737..2.053 rows=2720 loops=1)
+  Recheck Cond: (created_at >= (now() - '1 day'::interval))
+  Heap Blocks: exact=2332
+  Buffers: shared hit=2343
+  ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..51.75 rows=2576 width=0) (actual time=0.458..0.459 rows=2720 loops=1)
+        Index Cond: (created_at >= (now() - '1 day'::interval))
+        Buffers: shared hit=11
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.070 ms
+Execution Time: 2.198 ms
+
+--- half_year | 1000000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..25834.00 rows=494963 width=36) (actual time=0.006..159.241 rows=493321 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 506679
+  Buffers: shared hit=8334
+Planning Time: 0.086 ms
+Execution Time: 175.734 ms
+
+--- order | 1000000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=47.64..47.67 rows=11 width=36) (actual time=0.023..0.025 rows=14 loops=1)
+  Buffers: shared hit=17
+  ->  Sort  (cost=47.64..47.67 rows=11 width=36) (actual time=0.023..0.023 rows=14 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=17
+        ->  Bitmap Heap Scan on events  (cost=4.51..47.45 rows=11 width=36) (actual time=0.012..0.017 rows=14 loops=1)
+              Recheck Cond: (user_id = 123)
+              Heap Blocks: exact=14
+              Buffers: shared hit=17
+              ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.010..0.010 rows=14 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=3
+Planning Time: 0.025 ms
+Execution Time: 0.057 ms
+
+--- agg30 | 1000000 строк | индексы
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+Finalize GroupAggregate  (cost=11656.73..11657.75 rows=4 width=15) (actual time=29.255..35.168 rows=4 loops=1)
+  Group Key: event_type
+  Buffers: shared hit=8578
+  ->  Gather Merge  (cost=11656.73..11657.67 rows=8 width=15) (actual time=29.249..35.159 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=8578
+        ->  Sort  (cost=10656.71..10656.72 rows=4 width=15) (actual time=15.220..15.222 rows=4 loops=3)
+              Sort Key: event_type
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=8578
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=10656.63..10656.67 rows=4 width=15) (actual time=15.178..15.180 rows=4 loops=3)
+                    Group Key: event_type
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared hit=8562
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Bitmap Heap Scan on events  (cost=1548.43..10484.59 rows=34409 width=7) (actual time=2.673..11.113 rows=27457 loops=3)
+                          Recheck Cond: (created_at >= (now() - '30 days'::interval))
+                          Heap Blocks: exact=5440
+                          Buffers: shared hit=8562
+                          ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..1527.79 rows=82581 width=0) (actual time=6.774..6.775 rows=82371 loops=1)
+                                Index Cond: (created_at >= (now() - '30 days'::interval))
+                                Buffers: shared hit=228
+Planning Time: 0.093 ms
+Execution Time: 35.259 ms
+
+--- agg365 | 1000000 строк | индексы
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=84584.00..104896.50 rows=1000000 width=12) (actual time=283.592..283.908 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 16  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=8334
+  ->  Seq Scan on events  (cost=0.00..28334.00 rows=1000000 width=4) (actual time=5.850..192.652 rows=1000000 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Buffers: shared hit=8334
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.138 ms
+JIT:
+  Functions: 8
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.459 ms, Inlining 0.000 ms, Optimization 0.394 ms, Emission 5.465 ms, Total 6.318 ms
+Execution Time: 285.962 ms
+
+--- Составной индекс (user_id, created_at DESC) (задание 7)
+idx_events_user_created: 30 MB, построен за 500.7 мс
+ANALYZE
+--- order | 1000000 строк | составной индекс
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=47.64..47.67 rows=11 width=36) (actual time=0.025..0.026 rows=14 loops=1)
+  Buffers: shared hit=17
+  ->  Sort  (cost=47.64..47.67 rows=11 width=36) (actual time=0.024..0.025 rows=14 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=17
+        ->  Bitmap Heap Scan on events  (cost=4.51..47.45 rows=11 width=36) (actual time=0.012..0.018 rows=14 loops=1)
+              Recheck Cond: (user_id = 123)
+              Heap Blocks: exact=14
+              Buffers: shared hit=17
+              ->  Bitmap Index Scan on idx_events_user_created  (cost=0.00..4.51 rows=11 width=0) (actual time=0.010..0.010 rows=14 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=3
+Planning Time: 0.026 ms
+Execution Time: 0.063 ms
+
+таблица: 65 MB
+всего: PK + 3 индекса: 147 MB
+DROP INDEX
+
+==================== Объём: 5000000 строк
+вставлено 4000000 строк за 10281.5 мс
+VACUUM
+таблица: 326 MB
+всего: только PK: 433 MB
+--- Без дополнительных индексов (задания 4, 6, 7, 8, 11)
+--- user_eq | 5000000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123
+Gather  (cost=1000.00..68713.98 rows=51 width=36) (actual time=9.400..93.706 rows=57 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=12516 read=29151 written=92
+  ->  Parallel Seq Scan on events  (cost=0.00..67708.88 rows=21 width=36) (actual time=3.886..72.663 rows=19 loops=3)
+        Filter: (user_id = 123)
+        Rows Removed by Filter: 1666648
+        Buffers: shared hit=12516 read=29151 written=92
+Planning Time: 0.053 ms
+Execution Time: 93.742 ms
+
+--- day | 5000000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Gather  (cost=1000.00..80489.43 rows=13638 width=36) (actual time=0.241..265.607 rows=13700 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=12804 read=28863
+  ->  Parallel Seq Scan on events  (cost=0.00..78125.62 rows=5682 width=36) (actual time=0.133..246.438 rows=4567 loops=3)
+        Filter: (created_at >= (now() - '1 day'::interval))
+        Rows Removed by Filter: 1662100
+        Buffers: shared hit=12804 read=28863
+Planning Time: 0.058 ms
+Execution Time: 266.266 ms
+
+--- half_year | 5000000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..129167.70 rows=2459325 width=36) (actual time=2.463..790.309 rows=2465383 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 2534617
+  Buffers: shared hit=12964 read=28703
+Planning Time: 0.056 ms
+JIT:
+  Functions: 2
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.175 ms, Inlining 0.000 ms, Optimization 0.162 ms, Emission 2.278 ms, Total 2.615 ms
+Execution Time: 873.463 ms
+
+--- order | 5000000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=68709.36..68714.26 rows=42 width=36) (actual time=84.075..90.207 rows=57 loops=1)
+  Buffers: shared hit=13260 read=28479
+  ->  Gather Merge  (cost=68709.36..68714.26 rows=42 width=36) (actual time=84.073..90.199 rows=57 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=13260 read=28479
+        ->  Sort  (cost=67709.34..67709.39 rows=21 width=36) (actual time=71.254..71.256 rows=19 loops=3)
+              Sort Key: created_at DESC
+              Sort Method: quicksort  Memory: 26kB
+              Buffers: shared hit=13260 read=28479
+              Worker 0:  Sort Method: quicksort  Memory: 26kB
+              Worker 1:  Sort Method: quicksort  Memory: 26kB
+              ->  Parallel Seq Scan on events  (cost=0.00..67708.88 rows=21 width=36) (actual time=3.807..71.075 rows=19 loops=3)
+                    Filter: (user_id = 123)
+                    Rows Removed by Filter: 1666648
+                    Buffers: shared hit=13188 read=28479
+Planning Time: 0.063 ms
+Execution Time: 90.267 ms
+
+--- agg30 | 5000000 строк | без индекса
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+Finalize GroupAggregate  (cost=79976.30..79977.32 rows=4 width=15) (actual time=277.899..283.998 rows=4 loops=1)
+  Group Key: event_type
+  Buffers: shared hit=13492 read=28191
+  ->  Gather Merge  (cost=79976.30..79977.24 rows=8 width=15) (actual time=277.893..283.989 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=13492 read=28191
+        ->  Sort  (cost=78976.28..78976.29 rows=4 width=15) (actual time=265.087..265.089 rows=4 loops=3)
+              Sort Key: event_type
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=13492 read=28191
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=78976.20..78976.24 rows=4 width=15) (actual time=265.046..265.048 rows=4 loops=3)
+                    Group Key: event_type
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared hit=13476 read=28191
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Seq Scan on events  (cost=0.00..78125.62 rows=170115 width=7) (actual time=0.029..244.685 rows=136797 loops=3)
+                          Filter: (created_at >= (now() - '30 days'::interval))
+                          Rows Removed by Filter: 1529870
+                          Buffers: shared hit=13476 read=28191
+Planning Time: 0.076 ms
+Execution Time: 284.059 ms
+
+--- agg365 | 5000000 строк | без индекса
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=422890.67..524443.83 rows=4999540 width=12) (actual time=1433.525..1433.818 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 64  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=13636 read=28031
+  ->  Seq Scan on events  (cost=0.00..141666.55 rows=4999540 width=4) (actual time=63.015..1001.271 rows=4999996 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Rows Removed by Filter: 4
+        Buffers: shared hit=13636 read=28031
+Planning Time: 0.074 ms
+JIT:
+  Functions: 8
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+  Timing: Generation 0.409 ms, Inlining 7.937 ms, Optimization 31.779 ms, Emission 23.296 ms, Total 63.421 ms
+Execution Time: 1435.962 ms
+
+--- Индексы (user_id) и (created_at) (задания 5, 6, 8)
+idx_events_user_id: 34 MB, построен за 1840.3 мс
+idx_events_created_at: 107 MB, построен за 2199.2 мс
+ANALYZE
+--- user_eq | 5000000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123
+Bitmap Heap Scan on events  (cost=4.83..204.11 rows=51 width=36) (actual time=0.028..0.064 rows=57 loops=1)
+  Recheck Cond: (user_id = 123)
+  Heap Blocks: exact=56
+  Buffers: shared hit=59
+  ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..4.82 rows=51 width=0) (actual time=0.022..0.023 rows=57 loops=1)
+        Index Cond: (user_id = 123)
+        Buffers: shared hit=3
+Planning Time: 0.025 ms
+Execution Time: 0.097 ms
+
+--- day | 5000000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Bitmap Heap Scan on events  (cost=250.99..28226.62 rows=13233 width=36) (actual time=3.747..12.604 rows=13697 loops=1)
+  Recheck Cond: (created_at >= (now() - '1 day'::interval))
+  Heap Blocks: exact=11680
+  Buffers: shared hit=11721
+  ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..247.69 rows=13233 width=0) (actual time=2.048..2.049 rows=13697 loops=1)
+        Index Cond: (created_at >= (now() - '1 day'::interval))
+        Buffers: shared hit=41
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.114 ms
+Execution Time: 13.312 ms
+
+--- half_year | 5000000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..129167.70 rows=2446266 width=36) (actual time=2.608..802.278 rows=2465383 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 2534617
+  Buffers: shared hit=14839 read=26828
+Planning Time: 0.064 ms
+JIT:
+  Functions: 2
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.168 ms, Inlining 0.000 ms, Optimization 0.175 ms, Emission 2.342 ms, Total 2.686 ms
+Execution Time: 884.272 ms
+
+--- order | 5000000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=205.56..205.69 rows=51 width=36) (actual time=0.070..0.078 rows=57 loops=1)
+  Buffers: shared hit=59
+  ->  Sort  (cost=205.56..205.69 rows=51 width=36) (actual time=0.069..0.073 rows=57 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 29kB
+        Buffers: shared hit=59
+        ->  Bitmap Heap Scan on events  (cost=4.83..204.11 rows=51 width=36) (actual time=0.022..0.053 rows=57 loops=1)
+              Recheck Cond: (user_id = 123)
+              Heap Blocks: exact=56
+              Buffers: shared hit=59
+              ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..4.82 rows=51 width=0) (actual time=0.015..0.015 rows=57 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=3
+Planning Time: 0.037 ms
+Execution Time: 0.134 ms
+
+--- agg30 | 5000000 строк | индексы
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+Finalize GroupAggregate  (cost=54159.73..54160.75 rows=4 width=15) (actual time=141.424..147.678 rows=4 loops=1)
+  Group Key: event_type
+  Buffers: shared hit=15 read=42793
+  ->  Gather Merge  (cost=54159.73..54160.67 rows=8 width=15) (actual time=141.418..147.669 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=15 read=42793
+        ->  Sort  (cost=53159.71..53159.72 rows=4 width=15) (actual time=127.621..127.623 rows=4 loops=3)
+              Sort Key: event_type
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=15 read=42793
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=53159.63..53159.67 rows=4 width=15) (actual time=127.578..127.580 rows=4 loops=3)
+                    Group Key: event_type
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared read=42792
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Bitmap Heap Scan on events  (cost=7658.22..52307.54 rows=170418 width=7) (actual time=29.338..105.585 rows=136797 loops=3)
+                          Recheck Cond: (created_at >= (now() - '30 days'::interval))
+                          Heap Blocks: exact=16071
+                          Buffers: shared read=42792
+                          ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..7555.97 rows=409004 width=0) (actual time=35.702..35.703 rows=410391 loops=1)
+                                Index Cond: (created_at >= (now() - '30 days'::interval))
+                                Buffers: shared read=1125
+Planning Time: 0.106 ms
+Execution Time: 147.769 ms
+
+--- agg365 | 5000000 строк | индексы
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=422919.81..524483.05 rows=5000036 width=12) (actual time=1440.544..1441.135 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 64  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=16348 read=25319
+  ->  Seq Scan on events  (cost=0.00..141667.79 rows=5000036 width=4) (actual time=63.789..1006.767 rows=4999993 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Rows Removed by Filter: 7
+        Buffers: shared hit=16348 read=25319
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.137 ms
+JIT:
+  Functions: 8
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+  Timing: Generation 0.440 ms, Inlining 8.194 ms, Optimization 31.330 ms, Emission 24.199 ms, Total 64.163 ms
+Execution Time: 1443.395 ms
+
+--- Составной индекс (user_id, created_at DESC) (задание 7)
+idx_events_user_created: 150 MB, построен за 2936.7 мс
+ANALYZE
+--- order | 5000000 строк | составной индекс
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=209.46..209.59 rows=52 width=36) (actual time=0.055..0.061 rows=57 loops=1)
+  Buffers: shared hit=59
+  ->  Sort  (cost=209.46..209.59 rows=52 width=36) (actual time=0.054..0.057 rows=57 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 29kB
+        Buffers: shared hit=59
+        ->  Bitmap Heap Scan on events  (cost=4.84..207.97 rows=52 width=36) (actual time=0.017..0.042 rows=57 loops=1)
+              Recheck Cond: (user_id = 123)
+              Heap Blocks: exact=56
+              Buffers: shared hit=59
+              ->  Bitmap Index Scan on idx_events_user_created  (cost=0.00..4.82 rows=52 width=0) (actual time=0.012..0.012 rows=57 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=3
+Planning Time: 0.036 ms
+Execution Time: 0.121 ms
+
+таблица: 326 MB
+всего: PK + 3 индекса: 724 MB
+DROP INDEX
+
+==================== Объём: 10000000 строк
+вставлено 5000000 строк за 12293.1 мс
+VACUUM
+таблица: 651 MB
+всего: только PK: 865 MB
+--- Без дополнительных индексов (задания 4, 6, 7, 8, 11)
+--- user_eq | 10000000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123
+Gather  (cost=1000.00..136426.69 rows=101 width=36) (actual time=20.587..161.362 rows=103 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=12513 read=70821
+  ->  Parallel Seq Scan on events  (cost=0.00..135416.59 rows=42 width=36) (actual time=14.849..140.104 rows=34 loops=3)
+        Filter: (user_id = 123)
+        Rows Removed by Filter: 3333299
+        Buffers: shared hit=12513 read=70821
+Planning Time: 0.059 ms
+JIT:
+  Functions: 6
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.626 ms, Inlining 0.000 ms, Optimization 0.654 ms, Emission 7.686 ms, Total 8.966 ms
+Execution Time: 161.600 ms
+
+--- day | 10000000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Gather  (cost=1000.00..159839.73 rows=25901 width=36) (actual time=2.772..477.888 rows=27243 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=12801 read=70533
+  ->  Parallel Seq Scan on events  (cost=0.00..156249.63 rows=10792 width=36) (actual time=3.137..455.896 rows=9081 loops=3)
+        Filter: (created_at >= (now() - '1 day'::interval))
+        Rows Removed by Filter: 3324252
+        Buffers: shared hit=12801 read=70533
+Planning Time: 0.058 ms
+JIT:
+  Functions: 6
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.825 ms, Inlining 0.000 ms, Optimization 0.692 ms, Emission 8.599 ms, Total 10.117 ms
+Execution Time: 479.411 ms
+
+--- half_year | 10000000 строк | без индекса
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..258331.52 rows=4897886 width=36) (actual time=2.871..1656.045 rows=4931655 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 5068345
+  Buffers: shared hit=12961 read=70373
+Planning Time: 0.080 ms
+JIT:
+  Functions: 2
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.261 ms, Inlining 0.000 ms, Optimization 0.201 ms, Emission 2.645 ms, Total 3.106 ms
+Execution Time: 1824.009 ms
+
+--- order | 10000000 строк | без индекса
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=136417.75..136427.55 rows=84 width=36) (actual time=159.344..165.677 rows=100 loops=1)
+  Buffers: shared hit=13257 read=70149
+  ->  Gather Merge  (cost=136417.75..136427.55 rows=84 width=36) (actual time=157.475..163.800 rows=100 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=13257 read=70149
+        ->  Sort  (cost=135417.73..135417.83 rows=42 width=36) (actual time=142.783..142.786 rows=34 loops=3)
+              Sort Key: created_at DESC
+              Sort Method: quicksort  Memory: 27kB
+              Buffers: shared hit=13257 read=70149
+              Worker 0:  Sort Method: quicksort  Memory: 27kB
+              Worker 1:  Sort Method: quicksort  Memory: 27kB
+              ->  Parallel Seq Scan on events  (cost=0.00..135416.59 rows=42 width=36) (actual time=9.391..142.564 rows=34 loops=3)
+                    Filter: (user_id = 123)
+                    Rows Removed by Filter: 3333299
+                    Buffers: shared hit=13185 read=70149
+Planning Time: 0.070 ms
+JIT:
+  Functions: 7
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.637 ms, Inlining 0.000 ms, Optimization 0.621 ms, Emission 6.942 ms, Total 8.200 ms
+Execution Time: 165.918 ms
+
+--- agg30 | 10000000 строк | без индекса
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+Finalize GroupAggregate  (cost=158950.25..158951.26 rows=4 width=15) (actual time=541.917..548.634 rows=4 loops=1)
+  Group Key: event_type
+  Buffers: shared hit=13489 read=69861
+  ->  Gather Merge  (cost=158950.25..158951.18 rows=8 width=15) (actual time=541.903..548.617 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=13489 read=69861
+        ->  Sort  (cost=157950.22..157950.23 rows=4 width=15) (actual time=519.739..519.741 rows=4 loops=3)
+              Sort Key: event_type
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=13489 read=69861
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=157950.14..157950.18 rows=4 width=15) (actual time=519.694..519.696 rows=4 loops=3)
+                    Group Key: event_type
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared hit=13473 read=69861
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Seq Scan on events  (cost=0.00..156249.63 rows=340102 width=7) (actual time=6.498..478.497 rows=273609 loops=3)
+                          Filter: (created_at >= (now() - '30 days'::interval))
+                          Rows Removed by Filter: 3059725
+                          Buffers: shared hit=13473 read=69861
+Planning Time: 0.078 ms
+JIT:
+  Functions: 24
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 2.646 ms, Inlining 0.000 ms, Optimization 0.926 ms, Emission 18.500 ms, Total 22.072 ms
+Execution Time: 549.185 ms
+
+--- agg365 | 10000000 строк | без индекса
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=845764.42..1048866.23 rows=9998858 width=12) (actual time=2827.457..2827.817 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 128  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=13633 read=69701
+  ->  Seq Scan on events  (cost=0.00..283328.66 rows=9998858 width=4) (actual time=61.002..1957.556 rows=9999989 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Rows Removed by Filter: 11
+        Buffers: shared hit=13633 read=69701
+Planning Time: 0.076 ms
+JIT:
+  Functions: 8
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+  Timing: Generation 0.466 ms, Inlining 7.652 ms, Optimization 30.430 ms, Emission 22.870 ms, Total 61.419 ms
+Execution Time: 2829.871 ms
+
+--- Индексы (user_id) и (created_at) (задания 5, 6, 8)
+idx_events_user_id: 68 MB, построен за 3467.3 мс
+idx_events_created_at: 214 MB, построен за 6387.8 мс
+ANALYZE
+--- user_eq | 10000000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123
+Bitmap Heap Scan on events  (cost=5.23..403.79 rows=102 width=36) (actual time=0.020..0.110 rows=103 loops=1)
+  Recheck Cond: (user_id = 123)
+  Heap Blocks: exact=102
+  Buffers: shared hit=105
+  ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..5.20 rows=102 width=0) (actual time=0.012..0.013 rows=103 loops=1)
+        Index Cond: (user_id = 123)
+        Buffers: shared hit=3
+Planning Time: 0.021 ms
+Execution Time: 0.159 ms
+
+--- day | 10000000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '1 day'
+Bitmap Heap Scan on events  (cost=509.91..57152.14 rows=27028 width=36) (actual time=7.739..73.575 rows=27229 loops=1)
+  Recheck Cond: (created_at >= (now() - '1 day'::interval))
+  Heap Blocks: exact=23304
+  Buffers: shared hit=2 read=23379
+  ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..503.15 rows=27028 width=0) (actual time=4.073..4.074 rows=27229 loops=1)
+        Index Cond: (created_at >= (now() - '1 day'::interval))
+        Buffers: shared hit=2 read=75
+Planning:
+  Buffers: shared hit=2 read=2
+Planning Time: 0.141 ms
+Execution Time: 75.264 ms
+
+--- half_year | 10000000 строк | индексы
+SELECT * FROM lab02.events WHERE created_at >= NOW() - INTERVAL '180 days'
+Seq Scan on events  (cost=0.00..258335.40 rows=4902076 width=36) (actual time=2.196..1633.334 rows=4931646 loops=1)
+  Filter: (created_at >= (now() - '180 days'::interval))
+  Rows Removed by Filter: 5068354
+  Buffers: shared hit=16315 read=67019
+Planning Time: 0.063 ms
+JIT:
+  Functions: 2
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.173 ms, Inlining 0.000 ms, Optimization 0.156 ms, Emission 2.030 ms, Total 2.359 ms
+Execution Time: 1798.846 ms
+
+--- order | 10000000 строк | индексы
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=407.20..407.45 rows=100 width=36) (actual time=0.095..0.105 rows=100 loops=1)
+  Buffers: shared hit=105
+  ->  Sort  (cost=407.20..407.45 rows=102 width=36) (actual time=0.095..0.099 rows=100 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 32kB
+        Buffers: shared hit=105
+        ->  Bitmap Heap Scan on events  (cost=5.23..403.79 rows=102 width=36) (actual time=0.022..0.077 rows=103 loops=1)
+              Recheck Cond: (user_id = 123)
+              Heap Blocks: exact=102
+              Buffers: shared hit=105
+              ->  Bitmap Index Scan on idx_events_user_id  (cost=0.00..5.20 rows=102 width=0) (actual time=0.014..0.014 rows=103 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=3
+Planning Time: 0.028 ms
+Execution Time: 0.166 ms
+
+--- agg30 | 10000000 строк | индексы
+SELECT event_type, COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY event_type
+Finalize GroupAggregate  (cost=147491.22..147492.24 rows=4 width=15) (actual time=473.089..481.266 rows=4 loops=1)
+  Group Key: event_type
+  Buffers: shared hit=15 read=85581
+  ->  Gather Merge  (cost=147491.22..147492.16 rows=8 width=15) (actual time=473.070..481.230 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=15 read=85581
+        ->  Sort  (cost=146491.20..146491.21 rows=4 width=15) (actual time=457.940..457.942 rows=4 loops=3)
+              Sort Key: event_type
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=15 read=85581
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=146491.12..146491.16 rows=4 width=15) (actual time=457.893..457.896 rows=4 loops=3)
+                    Group Key: event_type
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared read=85580
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Bitmap Heap Scan on events  (cost=14956.52..144826.58 rows=332908 width=7) (actual time=78.572..409.243 rows=273606 loops=3)
+                          Recheck Cond: (created_at >= (now() - '30 days'::interval))
+                          Rows Removed by Index Recheck: 1213583
+                          Heap Blocks: exact=17864 lossy=11816
+                          Buffers: shared read=85580
+                          ->  Bitmap Index Scan on idx_events_created_at  (cost=0.00..14756.77 rows=798978 width=0) (actual time=84.046..84.048 rows=820818 loops=1)
+                                Index Cond: (created_at >= (now() - '30 days'::interval))
+                                Buffers: shared read=2246
+Planning Time: 0.090 ms
+JIT:
+  Functions: 27
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 2.068 ms, Inlining 0.000 ms, Optimization 1.117 ms, Emission 18.188 ms, Total 21.372 ms
+Execution Time: 481.965 ms
+
+--- agg365 | 10000000 строк | индексы
+SELECT DATE(created_at), COUNT(*) FROM lab02.events WHERE created_at >= NOW() - INTERVAL '365 days' GROUP BY DATE(created_at)
+HashAggregate  (cost=845838.51..1048964.59 rows=10000053 width=12) (actual time=2908.999..2909.335 rows=366 loops=1)
+  Group Key: date(created_at)
+  Planned Partitions: 128  Batches: 1  Memory Usage: 3121kB
+  Buffers: shared hit=16316 read=67018
+  ->  Seq Scan on events  (cost=0.00..283335.53 rows=10000053 width=4) (actual time=61.473..2006.976 rows=9999980 loops=1)
+        Filter: (created_at >= (now() - '365 days'::interval))
+        Rows Removed by Filter: 20
+        Buffers: shared hit=16316 read=67018
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.136 ms
+JIT:
+  Functions: 8
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+  Timing: Generation 0.402 ms, Inlining 9.730 ms, Optimization 28.682 ms, Emission 22.746 ms, Total 61.560 ms
+Execution Time: 2911.460 ms
+
+--- Составной индекс (user_id, created_at DESC) (задание 7)
+idx_events_user_created: 301 MB, построен за 5141.5 мс
+ANALYZE
+--- order | 10000000 строк | составной индекс
+SELECT * FROM lab02.events WHERE user_id = 123 ORDER BY created_at DESC LIMIT 100
+Limit  (cost=399.39..399.64 rows=100 width=36) (actual time=0.101..0.111 rows=100 loops=1)
+  Buffers: shared hit=105
+  ->  Sort  (cost=399.39..399.64 rows=100 width=36) (actual time=0.101..0.105 rows=100 loops=1)
+        Sort Key: created_at DESC
+        Sort Method: quicksort  Memory: 32kB
+        Buffers: shared hit=105
+        ->  Bitmap Heap Scan on events  (cost=5.21..396.07 rows=100 width=36) (actual time=0.027..0.081 rows=103 loops=1)
+              Recheck Cond: (user_id = 123)
+              Heap Blocks: exact=102
+              Buffers: shared hit=105
+              ->  Bitmap Index Scan on idx_events_user_created  (cost=0.00..5.18 rows=100 width=0) (actual time=0.014..0.015 rows=103 loops=1)
+                    Index Cond: (user_id = 123)
+                    Buffers: shared hit=3
+Planning Time: 0.045 ms
+Execution Time: 0.166 ms
+
+таблица: 651 MB
+всего: PK + 3 индекса: 1448 MB
+DROP INDEX

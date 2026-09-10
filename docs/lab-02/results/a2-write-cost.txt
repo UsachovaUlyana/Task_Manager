@@ -1,0 +1,25 @@
+Output format is unaligned.
+DROP TABLE
+psql:/scripts/lab-02/a2-write-cost.sql:9: NOTICE:  table "events_write" does not exist, skipping
+CREATE TABLE
+=== Задание 9. Только PRIMARY KEY
+
+базовый 1 млн строк: 3015.1 мс
+
+INSERT 1 000 000 строк, доп. индексов 0: 4718.9 мс
+UPDATE 100 000 строк (created_at), доп. индексов 0: 546.8 мс
+DELETE 100 000 строк, доп. индексов 0: 189.6 мс
+таблица 137 MB, индексы 45 MB
+TRUNCATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+=== Задание 9. PRIMARY KEY + idx_events_user_id, idx_events_created_at, idx_events_user_created
+
+базовый 1 млн строк: 10836.3 мс
+
+INSERT 1 000 000 строк, доп. индексов 3: 12390.9 мс
+UPDATE 100 000 строк (created_at), доп. индексов 3: 2167.3 мс
+DELETE 100 000 строк, доп. индексов 3: 51.3 мс
+таблица 137 MB, индексы 206 MB
+DROP TABLE

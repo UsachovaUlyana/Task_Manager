@@ -1,0 +1,51 @@
+=== откат миграции 011
+ Container taskmanager-postgres  Running
+####################################################
+##   _     _             _ _                      ##
+##  | |   (_)           (_) |                     ##
+##  | |    _  __ _ _   _ _| |__   __ _ ___  ___   ##
+##  | |   | |/ _` | | | | | '_ \ / _` / __|/ _ \  ##
+##  | |___| | (_| | |_| | | |_) | (_| \__ \  __/  ##
+##  \_____/_|\__, |\__,_|_|_.__/ \__,_|___/\___|  ##
+##              | |                               ##
+##              |_|                               ##
+##                                                ## 
+##  Get documentation at docs.liquibase.com       ##
+##  Get certified courses at learn.liquibase.com  ## 
+##                                                ##
+####################################################
+Starting Liquibase at 21:02:03 (version 4.25.1 #690 built at 2023-12-18 16:29+0000)
+Liquibase Version: 4.25.1
+Liquibase Open Source 4.25.1 by Liquibase
+Rolling Back Changeset: changelog/changesets/011-create-tasks-created-at-due-date-index.xml::011-create-tasks-created-at-due-date-index::taskmanager
+Liquibase command 'rollback-count' was executed successfully.
+=== повторное применение
+ Container taskmanager-postgres  Running
+####################################################
+##   _     _             _ _                      ##
+##  | |   (_)           (_) |                     ##
+##  | |    _  __ _ _   _ _| |__   __ _ ___  ___   ##
+##  | |   | |/ _` | | | | | '_ \ / _` / __|/ _ \  ##
+##  | |___| | (_| | |_| | | |_) | (_| \__ \  __/  ##
+##  \_____/_|\__, |\__,_|_|_.__/ \__,_|___/\___|  ##
+##              | |                               ##
+##              |_|                               ##
+##                                                ## 
+##  Get documentation at docs.liquibase.com       ##
+##  Get certified courses at learn.liquibase.com  ## 
+##                                                ##
+####################################################
+Starting Liquibase at 21:02:24 (version 4.25.1 #690 built at 2023-12-18 16:29+0000)
+Liquibase Version: 4.25.1
+Liquibase Open Source 4.25.1 by Liquibase
+Running Changeset: changelog/changesets/011-create-tasks-created-at-due-date-index.xml::011-create-tasks-created-at-due-date-index::taskmanager
+
+UPDATE SUMMARY
+Run:                          1
+Previously run:              11
+Filtered out:                 0
+-------------------------------
+Total change sets:           12
+
+Liquibase: Update has been successful. Rows affected: 1
+Liquibase command 'update' was executed successfully.

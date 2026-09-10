@@ -1,0 +1,55 @@
+Output format is unaligned.
+--- q6_admin_page | 5000000 строк | схема после ЛР №1
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+FROM (
+    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+    FROM tasks AS t
+    ORDER BY t.created_at DESC
+    LIMIT 10 OFFSET 0
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+INNER JOIN users AS u ON t0.user_id = u.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id
+ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+Sort  (cost=157.81..157.84 rows=13 width=387) (actual time=0.244..0.246 rows=11 loops=1)
+  Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+  Sort Method: quicksort  Memory: 28kB
+  Buffers: shared hit=101
+  ->  Nested Loop Left Join  (cost=2.41..157.57 rows=13 width=387) (actual time=0.093..0.223 rows=11 loops=1)
+        Buffers: shared hit=101
+        ->  Nested Loop  (cost=1.84..111.41 rows=10 width=313) (actual time=0.081..0.180 rows=10 loops=1)
+              Buffers: shared hit=56
+              ->  Hash Right Join  (cost=1.55..28.38 rows=10 width=193) (actual time=0.073..0.156 rows=10 loops=1)
+                    Hash Cond: (p.id = t.project_id)
+                    Buffers: shared hit=26
+                    ->  Seq Scan on projects p  (cost=0.00..23.00 rows=1000 width=65) (actual time=0.003..0.056 rows=1000 loops=1)
+                          Buffers: shared hit=13
+                    ->  Hash  (cost=1.43..1.43 rows=10 width=128) (actual time=0.025..0.025 rows=10 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                          Buffers: shared hit=13
+                          ->  Limit  (cost=0.43..1.43 rows=10 width=128) (actual time=0.012..0.017 rows=10 loops=1)
+                                Buffers: shared hit=13
+                                ->  Index Scan using idx_tasks_created_at on tasks t  (cost=0.43..497874.47 rows=5000822 width=128) (actual time=0.011..0.016 rows=10 loops=1)
+                                      Buffers: shared hit=13
+              ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.002..0.002 rows=1 loops=10)
+                    Index Cond: (id = t.user_id)
+                    Buffers: shared hit=30
+        ->  Nested Loop  (cost=0.57..4.61 rows=1 width=74) (actual time=0.004..0.004 rows=1 loops=10)
+              Buffers: shared hit=45
+              ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.43..4.45 rows=1 width=32) (actual time=0.002..0.003 rows=1 loops=10)
+                    Index Cond: (task_id = t.id)
+                    Heap Fetches: 0
+                    Buffers: shared hit=31
+              ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.001..0.001 rows=1 loops=7)
+                    Index Cond: (id = t2.tag_id)
+                    Buffers: shared hit=14
+Planning:
+  Buffers: shared hit=24
+Planning Time: 0.544 ms
+Execution Time: 0.374 ms
+

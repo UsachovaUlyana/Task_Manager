@@ -1,0 +1,210 @@
+Output format is unaligned.
+DELETE 0
+=== Запрос 2: страница с фильтром по сроку, 5000000 задач
+--- вариант A: индекс (created_at DESC, due_date) — срок проверяется прямо в индексе
+CREATE INDEX
+ANALYZE
+--- q2_due_page | 5000000 строк | вариант A: индекс (created_at DESC, due_date)
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+FROM (
+    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+    FROM tasks AS t
+    WHERE t.due_date >= '2026-03-14 00:00:00+00' AND t.due_date <= '2026-03-21 00:00:00+00'
+    ORDER BY t.created_at DESC
+    LIMIT 10 OFFSET 0
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+INNER JOIN users AS u ON t0.user_id = u.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id
+ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+Sort  (cost=230.78..230.82 rows=13 width=387) (actual time=20.696..20.699 rows=11 loops=1)
+  Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+  Sort Method: quicksort  Memory: 29kB
+  Buffers: shared hit=4657
+  ->  Nested Loop Left Join  (cost=75.38..230.54 rows=13 width=387) (actual time=20.495..20.675 rows=11 loops=1)
+        Buffers: shared hit=4657
+        ->  Nested Loop  (cost=74.81..184.39 rows=10 width=313) (actual time=20.463..20.604 rows=10 loops=1)
+              Buffers: shared hit=4612
+              ->  Hash Right Join  (cost=74.53..101.36 rows=10 width=193) (actual time=20.443..20.562 rows=10 loops=1)
+                    Hash Cond: (p.id = t.project_id)
+                    Buffers: shared hit=4582
+                    ->  Seq Scan on projects p  (cost=0.00..23.00 rows=1000 width=65) (actual time=0.008..0.067 rows=1000 loops=1)
+                          Buffers: shared hit=13
+                    ->  Hash  (cost=74.40..74.40 rows=10 width=128) (actual time=20.413..20.414 rows=10 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                          Buffers: shared hit=4569
+                          ->  Limit  (cost=0.43..74.40 rows=10 width=128) (actual time=20.326..20.377 rows=10 loops=1)
+                                Buffers: shared hit=4569
+                                ->  Index Scan using idx_tasks_created_at_due_date on tasks t  (cost=0.43..234726.14 rows=31732 width=128) (actual time=20.325..20.374 rows=10 loops=1)
+                                      Index Cond: ((due_date >= '2026-03-14 00:00:00+00'::timestamp with time zone) AND (due_date <= '2026-03-21 00:00:00+00'::timestamp with time zone))
+                                      Buffers: shared hit=4569
+              ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.003..0.003 rows=1 loops=10)
+                    Index Cond: (id = t.user_id)
+                    Buffers: shared hit=30
+        ->  Nested Loop  (cost=0.57..4.61 rows=1 width=74) (actual time=0.006..0.006 rows=1 loops=10)
+              Buffers: shared hit=45
+              ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.43..4.45 rows=1 width=32) (actual time=0.005..0.005 rows=1 loops=10)
+                    Index Cond: (task_id = t.id)
+                    Heap Fetches: 0
+                    Buffers: shared hit=31
+              ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.002..0.002 rows=1 loops=7)
+                    Index Cond: (id = t2.tag_id)
+                    Buffers: shared hit=14
+Planning:
+  Buffers: shared hit=24
+Planning Time: 0.691 ms
+Execution Time: 20.890 ms
+
+DROP INDEX
+ANALYZE
+--- вариант B: сначала фильтр по сроку, потом сортировка (подзапрос с OFFSET 0 — барьер для планировщика)
+--- q2_due_page | 5000000 строк | вариант B: фильтр до сортировки (OFFSET 0)
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+FROM (
+    SELECT f.id, f.created_at, f.description, f.due_date, f.priority, f.project_id, f.status, f.title, f.updated_at, f.user_id
+    FROM (
+        SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+        FROM tasks AS t
+        WHERE t.due_date >= '2026-03-14 00:00:00+00' AND t.due_date <= '2026-03-21 00:00:00+00'
+        OFFSET 0
+    ) AS f
+    ORDER BY f.created_at DESC
+    LIMIT 10 OFFSET 0
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+INNER JOIN users AS u ON t0.user_id = u.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id
+ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+Incremental Sort  (cost=65963.74..66132.52 rows=13 width=387) (actual time=108.124..108.127 rows=11 loops=1)
+  Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+  Presorted Key: t.created_at
+  Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 29kB  Peak Memory: 29kB
+  Buffers: shared hit=49 read=28605
+  ->  Nested Loop Left Join  (cost=65945.03..66132.04 rows=13 width=387) (actual time=107.909..108.102 rows=11 loops=1)
+        Buffers: shared hit=49 read=28605
+        ->  Nested Loop  (cost=65944.46..66085.88 rows=10 width=313) (actual time=107.886..107.985 rows=10 loops=1)
+              Buffers: shared hit=24 read=28585
+              ->  Nested Loop Left Join  (cost=65944.17..66002.86 rows=10 width=193) (actual time=107.860..107.901 rows=10 loops=1)
+                    Buffers: shared hit=14 read=28565
+                    ->  Limit  (cost=65943.90..65943.92 rows=10 width=128) (actual time=107.799..107.802 rows=10 loops=1)
+                          Buffers: shared read=28555
+                          ->  Sort  (cost=65943.90..66025.83 rows=32773 width=128) (actual time=107.797..107.799 rows=10 loops=1)
+                                Sort Key: t.created_at DESC
+                                Sort Method: top-N heapsort  Memory: 28kB
+                                Buffers: shared read=28555
+                                ->  Bitmap Heap Scan on tasks t  (cost=704.36..65235.68 rows=32773 width=128) (actual time=11.878..99.392 rows=34269 loops=1)
+                                      Recheck Cond: ((due_date >= '2026-03-14 00:00:00+00'::timestamp with time zone) AND (due_date <= '2026-03-21 00:00:00+00'::timestamp with time zone))
+                                      Heap Blocks: exact=28423
+                                      Buffers: shared read=28555
+                                      ->  Bitmap Index Scan on idx_tasks_due_date  (cost=0.00..696.16 rows=32773 width=0) (actual time=6.628..6.629 rows=34269 loops=1)
+                                            Index Cond: ((due_date >= '2026-03-14 00:00:00+00'::timestamp with time zone) AND (due_date <= '2026-03-21 00:00:00+00'::timestamp with time zone))
+                                            Buffers: shared read=132
+                    ->  Index Scan using projects_pkey on projects p  (cost=0.28..5.89 rows=1 width=65) (actual time=0.008..0.008 rows=1 loops=10)
+                          Index Cond: (id = t.project_id)
+                          Buffers: shared hit=14 read=10
+              ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.008..0.008 rows=1 loops=10)
+                    Index Cond: (id = t.user_id)
+                    Buffers: shared hit=10 read=20
+        ->  Nested Loop  (cost=0.57..4.61 rows=1 width=74) (actual time=0.011..0.011 rows=1 loops=10)
+              Buffers: shared hit=25 read=20
+              ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.43..4.45 rows=1 width=32) (actual time=0.009..0.009 rows=1 loops=10)
+                    Index Cond: (task_id = t.id)
+                    Heap Fetches: 0
+                    Buffers: shared hit=11 read=20
+              ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.002..0.002 rows=1 loops=7)
+                    Index Cond: (id = t2.tag_id)
+                    Buffers: shared hit=14
+Planning:
+  Buffers: shared hit=16 read=8
+Planning Time: 0.946 ms
+Execution Time: 108.583 ms
+
+--- вариант C: сортировка по сроку (?sort=due_date) — порядок совпадает с idx_tasks_due_date
+--- q2_due_page | 5000000 строк | вариант C: сортировка по сроку (sort=due_date)
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+FROM (
+    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+    FROM tasks AS t
+    WHERE t.due_date >= '2026-03-14 00:00:00+00' AND t.due_date <= '2026-03-21 00:00:00+00'
+    ORDER BY t.due_date, t.created_at DESC
+    LIMIT 10 OFFSET 0
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+INNER JOIN users AS u ON t0.user_id = u.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id
+ORDER BY t0.due_date, t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+Sort  (cost=194.70..194.73 rows=13 width=387) (actual time=0.384..0.387 rows=13 loops=1)
+  Sort Key: t.due_date, t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+  Sort Method: quicksort  Memory: 30kB
+  Buffers: shared hit=108
+  ->  Nested Loop Left Join  (cost=39.30..194.46 rows=13 width=387) (actual time=0.183..0.363 rows=13 loops=1)
+        Buffers: shared hit=108
+        ->  Nested Loop  (cost=38.73..148.30 rows=10 width=313) (actual time=0.161..0.308 rows=10 loops=1)
+              Buffers: shared hit=57
+              ->  Hash Right Join  (cost=38.45..65.28 rows=10 width=193) (actual time=0.152..0.251 rows=10 loops=1)
+                    Hash Cond: (p.id = t.project_id)
+                    Buffers: shared hit=27
+                    ->  Seq Scan on projects p  (cost=0.00..23.00 rows=1000 width=65) (actual time=0.004..0.061 rows=1000 loops=1)
+                          Buffers: shared hit=13
+                    ->  Hash  (cost=38.32..38.32 rows=10 width=128) (actual time=0.114..0.115 rows=10 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                          Buffers: shared hit=14
+                          ->  Limit  (cost=3.85..38.32 rows=10 width=128) (actual time=0.104..0.106 rows=10 loops=1)
+                                Buffers: shared hit=14
+                                ->  Incremental Sort  (cost=3.85..112982.32 rows=32773 width=128) (actual time=0.104..0.104 rows=10 loops=1)
+                                      Sort Key: t.due_date, t.created_at DESC
+                                      Presorted Key: t.due_date
+                                      Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+                                      Buffers: shared hit=14
+                                      ->  Index Scan using idx_tasks_due_date on tasks t  (cost=0.43..111509.11 rows=32773 width=128) (actual time=0.087..0.094 rows=11 loops=1)
+                                            Index Cond: ((due_date >= '2026-03-14 00:00:00+00'::timestamp with time zone) AND (due_date <= '2026-03-21 00:00:00+00'::timestamp with time zone))
+                                            Buffers: shared hit=14
+              ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.005..0.005 rows=1 loops=10)
+                    Index Cond: (id = t.user_id)
+                    Buffers: shared hit=30
+        ->  Nested Loop  (cost=0.57..4.61 rows=1 width=74) (actual time=0.004..0.005 rows=1 loops=10)
+              Buffers: shared hit=51
+              ->  Index Only Scan using pk_task_tags on task_tags t2  (cost=0.43..4.45 rows=1 width=32) (actual time=0.003..0.003 rows=1 loops=10)
+                    Index Cond: (task_id = t.id)
+                    Heap Fetches: 0
+                    Buffers: shared hit=31
+              ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.001..0.001 rows=1 loops=10)
+                    Index Cond: (id = t2.tag_id)
+                    Buffers: shared hit=20
+Planning:
+  Buffers: shared hit=24
+Planning Time: 0.505 ms
+Execution Time: 0.509 ms
+
+=== Запрос 4: статистика — другой способ получения данных (материализованное представление)
+DROP MATERIALIZED VIEW
+psql:/scripts/lab-02/b2-fixes.sql:81: NOTICE:  materialized view "task_status_stats" does not exist, skipping
+построение task_status_stats, доп. индексов 0: 341.2 мс
+--- q4_stats | 5000000 строк | вариант: материализованное представление
+SELECT "Status", "Count", "OverdueCount" FROM lab02.task_status_stats ORDER BY "Status"
+Sort  (cost=142.54..147.64 rows=2040 width=12) (actual time=0.007..0.007 rows=4 loops=1)
+  Sort Key: "Status"
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=1
+  ->  Seq Scan on task_status_stats  (cost=0.00..30.40 rows=2040 width=12) (actual time=0.001..0.002 rows=4 loops=1)
+        Buffers: shared hit=1
+Planning Time: 0.008 ms
+Execution Time: 0.017 ms
+
+REFRESH task_status_stats, доп. индексов 0: 312.2 мс
+DROP MATERIALIZED VIEW

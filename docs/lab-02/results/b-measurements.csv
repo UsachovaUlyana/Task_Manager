@@ -1,0 +1,31 @@
+volume,query,variant,scan,indexes,actual_rows,rows_removed,has_sort,operations,buffers,execution_ms
+100000,q1_count_user,схема после ЛР №1,Index Only Scan,idx_tasks_user_id_created_at,978,0,f,Aggregate → Index Only Scan,10,0.235
+100000,q2_due_count,схема после ЛР №1,Index Only Scan,idx_tasks_due_date,698,0,f,Aggregate → Index Only Scan,5,0.123
+100000,q2_due_page,схема после ЛР №1,Index Scan,"idx_tasks_created_at, pk_task_tags, tags_pkey, users_pkey",10,24317,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,24481,9.799
+100000,q3_user_page,схема после ЛР №1,Index Scan,"idx_tasks_user_id_created_at, pk_task_tags, tags_pkey",10,0,t,Sort → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Nested Loop → Index Only Scan → Index Scan,73,0.337
+100000,q4_stats,схема после ЛР №1,Seq Scan,,100000,0,t,Aggregate → Gather Merge → Sort → Aggregate → Seq Scan,1735,17.713
+100000,q5_count_all,схема после ЛР №1,Index Only Scan,idx_tasks_status,100000,0,f,Aggregate → Index Only Scan,82,10.259
+1000000,q1_count_user,схема после ЛР №1,Index Only Scan,idx_tasks_user_id_created_at,9996,0,f,Aggregate → Index Only Scan,73,1.257
+1000000,q2_due_count,схема после ЛР №1,Index Only Scan,idx_tasks_due_date,6846,0,f,Aggregate → Index Only Scan,24,0.982
+1000000,q2_due_page,схема после ЛР №1,Index Scan,"idx_tasks_created_at, pk_task_tags, tags_pkey, users_pkey",10,238759,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,239745,188.300
+1000000,q3_user_page,схема после ЛР №1,Index Scan,"idx_tasks_user_id_created_at, pk_task_tags, tags_pkey",10,0,t,Sort → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Nested Loop → Index Only Scan → Index Scan,75,0.393
+1000000,q4_stats,схема после ЛР №1,Seq Scan,,999999,0,t,Aggregate → Gather Merge → Sort → Aggregate → Seq Scan,17301,86.022
+1000000,q5_count_all,схема после ЛР №1,Index Only Scan,idx_tasks_priority,999999,0,f,Aggregate → Gather → Aggregate → Index Only Scan,790,38.391
+5000000,q1_count_user,схема после ЛР №1,Index Only Scan,idx_tasks_user_id_created_at,49874,0,f,Aggregate → Index Only Scan,298,6.297
+5000000,q2_due_count,схема после ЛР №1,Index Only Scan,idx_tasks_due_date,34269,0,f,Aggregate → Index Only Scan,22756,6.269
+5000000,q2_due_page,схема после ЛР №1,Index Scan,"idx_tasks_created_at, pk_task_tags, tags_pkey, users_pkey",10,1189534,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,1194006,2820.195
+5000000,q3_user_page,схема после ЛР №1,Index Scan,"idx_tasks_user_id_created_at, pk_task_tags, tags_pkey",10,0,t,Sort → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Nested Loop → Index Only Scan → Index Scan,77,0.446
+5000000,q4_stats,схема после ЛР №1,Seq Scan,,5000001,0,t,Aggregate → Gather Merge → Sort → Aggregate → Seq Scan,87919,403.267
+5000000,q5_count_all,схема после ЛР №1,Index Only Scan,idx_tasks_status,5000001,0,f,Aggregate → Gather → Aggregate → Index Only Scan,3953,178.639
+5000000,q2_due_page,"вариант A: индекс (created_at DESC, due_date)",Index Scan,"idx_tasks_created_at_due_date, pk_task_tags, tags_pkey, users_pkey",10,0,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,4657,20.890
+5000000,q2_due_page,вариант B: фильтр до сортировки (OFFSET 0),Bitmap Heap Scan,"idx_tasks_due_date, pk_task_tags, projects_pkey, tags_pkey, users_pkey",34269,0,t,Incremental Sort → Nested Loop → Nested Loop → Nested Loop → Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,28654,108.583
+5000000,q2_due_page,вариант C: сортировка по сроку (sort=due_date),Index Scan,"idx_tasks_due_date, pk_task_tags, tags_pkey, users_pkey",11,0,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Incremental Sort → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,108,0.509
+5000000,q4_stats,вариант: материализованное представление,Seq Scan,,4,0,t,Sort → Seq Scan,1,0.017
+5000000,q6_admin_page,схема после ЛР №1,Index Scan,"idx_tasks_created_at, pk_task_tags, tags_pkey, users_pkey",10,0,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,101,0.374
+5000000,q1_count_user,после миграции 011,Index Only Scan,idx_tasks_user_id_created_at,49874,0,f,Aggregate → Index Only Scan,298,6.394
+5000000,q2_due_count,после миграции 011,Index Only Scan,idx_tasks_due_date,34269,0,f,Aggregate → Index Only Scan,22756,6.145
+5000000,q2_due_page,после миграции 011,Index Scan,"idx_tasks_created_at_due_date, pk_task_tags, tags_pkey, users_pkey",10,0,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,4657,18.548
+5000000,q3_user_page,после миграции 011,Index Scan,"idx_tasks_user_id_created_at, pk_task_tags, tags_pkey",10,0,t,Sort → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Nested Loop → Index Only Scan → Index Scan,77,0.424
+5000000,q4_stats,после миграции 011,Seq Scan,,5000001,0,t,Aggregate → Gather Merge → Sort → Aggregate → Seq Scan,87919,407.226
+5000000,q5_count_all,после миграции 011,Index Only Scan,idx_tasks_status,5000001,0,f,Aggregate → Gather → Aggregate → Index Only Scan,3953,179.274
+5000000,q6_admin_page,после миграции 011,Index Scan,"idx_tasks_created_at_due_date, pk_task_tags, tags_pkey, users_pkey",10,0,t,Sort → Nested Loop → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan → Index Scan → Nested Loop → Index Only Scan → Index Scan,101,0.383

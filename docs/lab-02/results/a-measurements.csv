@@ -1,0 +1,71 @@
+volume,query,variant,scan,indexes,actual_rows,rows_removed,has_sort,operations,buffers,execution_ms
+10000,user_eq,без индекса,Seq Scan,,0,10000,f,Seq Scan,84,0.316
+10000,day,без индекса,Seq Scan,,18,9982,f,Seq Scan,84,1.229
+10000,half_year,без индекса,Seq Scan,,4869,5131,f,Seq Scan,84,1.674
+10000,order,без индекса,Seq Scan,,0,10000,t,Limit → Sort → Seq Scan,84,0.378
+10000,agg30,без индекса,Seq Scan,,819,9181,f,Aggregate → Seq Scan,84,1.433
+10000,agg365,без индекса,Seq Scan,,10000,0,f,Aggregate → Seq Scan,84,3.431
+10000,user_eq,индексы,Index Scan,idx_events_user_id,0,0,f,Index Scan,2,0.019
+10000,day,индексы,Bitmap Heap Scan,idx_events_created_at,18,0,f,Bitmap Heap Scan → Bitmap Index Scan,18,0.046
+10000,half_year,индексы,Seq Scan,,4869,5131,f,Seq Scan,84,1.833
+10000,order,индексы,Index Scan,idx_events_user_id,0,0,t,Limit → Sort → Index Scan,2,0.083
+10000,agg30,индексы,Bitmap Heap Scan,idx_events_created_at,819,0,f,Aggregate → Bitmap Heap Scan → Bitmap Index Scan,88,0.324
+10000,agg365,индексы,Seq Scan,,10000,0,f,Aggregate → Seq Scan,84,4.569
+10000,order,составной индекс,Index Scan,idx_events_user_created,0,0,f,Limit → Index Scan,2,0.019
+100000,user_eq,без индекса,Seq Scan,,0,100000,f,Seq Scan,834,3.582
+100000,day,без индекса,Seq Scan,,266,99734,f,Seq Scan,834,15.393
+100000,half_year,без индекса,Seq Scan,,49674,50326,f,Seq Scan,834,17.063
+100000,order,без индекса,Seq Scan,,0,100000,t,Limit → Sort → Seq Scan,834,3.456
+100000,agg30,без индекса,Seq Scan,,8400,91600,f,Aggregate → Seq Scan,834,14.538
+100000,agg365,без индекса,Seq Scan,,100000,0,f,Aggregate → Seq Scan,834,31.011
+100000,user_eq,индексы,Bitmap Heap Scan,idx_events_user_id,0,0,f,Bitmap Heap Scan → Bitmap Index Scan,2,0.035
+100000,day,индексы,Bitmap Heap Scan,idx_events_created_at,266,0,f,Bitmap Heap Scan → Bitmap Index Scan,230,0.205
+100000,half_year,индексы,Seq Scan,,49674,50326,f,Seq Scan,834,17.547
+100000,order,индексы,Bitmap Heap Scan,idx_events_user_id,0,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,2,0.055
+100000,agg30,индексы,Bitmap Heap Scan,idx_events_created_at,8400,0,f,Aggregate → Bitmap Heap Scan → Bitmap Index Scan,859,3.281
+100000,agg365,индексы,Seq Scan,,100000,0,f,Aggregate → Seq Scan,834,30.920
+100000,order,составной индекс,Bitmap Heap Scan,idx_events_user_id,0,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,2,0.034
+1000000,user_eq,без индекса,Seq Scan,,15,999987,f,Gather → Seq Scan,8334,19.671
+1000000,day,без индекса,Seq Scan,,2721,997281,f,Gather → Seq Scan,8334,52.293
+1000000,half_year,без индекса,Seq Scan,,493321,506679,f,Seq Scan,8334,165.716
+1000000,order,без индекса,Seq Scan,,15,999987,t,Limit → Gather Merge → Sort → Seq Scan,8406,19.802
+1000000,agg30,без индекса,Seq Scan,,82371,917628,t,Aggregate → Gather Merge → Sort → Aggregate → Seq Scan,8350,60.246
+1000000,agg365,без индекса,Seq Scan,,1000000,0,f,Aggregate → Seq Scan,8334,291.932
+1000000,user_eq,индексы,Bitmap Heap Scan,idx_events_user_id,14,0,f,Bitmap Heap Scan → Bitmap Index Scan,17,0.050
+1000000,day,индексы,Bitmap Heap Scan,idx_events_created_at,2720,0,f,Bitmap Heap Scan → Bitmap Index Scan,2343,2.198
+1000000,half_year,индексы,Seq Scan,,493321,506679,f,Seq Scan,8334,175.734
+1000000,order,индексы,Bitmap Heap Scan,idx_events_user_id,14,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,17,0.057
+1000000,agg30,индексы,Bitmap Heap Scan,idx_events_created_at,82371,0,t,Aggregate → Gather Merge → Sort → Aggregate → Bitmap Heap Scan → Bitmap Index Scan,8578,35.259
+1000000,agg365,индексы,Seq Scan,,1000000,0,f,Aggregate → Seq Scan,8334,285.962
+1000000,order,составной индекс,Bitmap Heap Scan,idx_events_user_created,14,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,17,0.063
+5000000,user_eq,без индекса,Seq Scan,,57,4999944,f,Gather → Seq Scan,41667,93.742
+5000000,day,без индекса,Seq Scan,,13701,4986300,f,Gather → Seq Scan,41667,266.266
+5000000,half_year,без индекса,Seq Scan,,2465383,2534617,f,Seq Scan,41667,873.463
+5000000,order,без индекса,Seq Scan,,57,4999944,t,Limit → Gather Merge → Sort → Seq Scan,41739,90.267
+5000000,agg30,без индекса,Seq Scan,,410391,4589610,t,Aggregate → Gather Merge → Sort → Aggregate → Seq Scan,41683,284.059
+5000000,agg365,без индекса,Seq Scan,,4999996,4,f,Aggregate → Seq Scan,41667,1435.962
+5000000,user_eq,индексы,Bitmap Heap Scan,idx_events_user_id,57,0,f,Bitmap Heap Scan → Bitmap Index Scan,59,0.097
+5000000,day,индексы,Bitmap Heap Scan,idx_events_created_at,13697,0,f,Bitmap Heap Scan → Bitmap Index Scan,11721,13.312
+5000000,half_year,индексы,Seq Scan,,2465383,2534617,f,Seq Scan,41667,884.272
+5000000,order,индексы,Bitmap Heap Scan,idx_events_user_id,57,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,59,0.134
+5000000,agg30,индексы,Bitmap Heap Scan,idx_events_created_at,410391,0,t,Aggregate → Gather Merge → Sort → Aggregate → Bitmap Heap Scan → Bitmap Index Scan,42808,147.769
+5000000,agg365,индексы,Seq Scan,,4999993,7,f,Aggregate → Seq Scan,41667,1443.395
+5000000,order,составной индекс,Bitmap Heap Scan,idx_events_user_created,57,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,59,0.121
+10000000,user_eq,без индекса,Seq Scan,,102,9999897,f,Gather → Seq Scan,83334,161.600
+10000000,day,без индекса,Seq Scan,,27243,9972756,f,Gather → Seq Scan,83334,479.411
+10000000,half_year,без индекса,Seq Scan,,4931655,5068345,f,Seq Scan,83334,1824.009
+10000000,order,без индекса,Seq Scan,,102,9999897,t,Limit → Gather Merge → Sort → Seq Scan,83406,165.918
+10000000,agg30,без индекса,Seq Scan,,820827,9179175,t,Aggregate → Gather Merge → Sort → Aggregate → Seq Scan,83350,549.185
+10000000,agg365,без индекса,Seq Scan,,9999989,11,f,Aggregate → Seq Scan,83334,2829.871
+10000000,user_eq,индексы,Bitmap Heap Scan,idx_events_user_id,103,0,f,Bitmap Heap Scan → Bitmap Index Scan,105,0.159
+10000000,day,индексы,Bitmap Heap Scan,idx_events_created_at,27229,0,f,Bitmap Heap Scan → Bitmap Index Scan,23381,75.264
+10000000,half_year,индексы,Seq Scan,,4931646,5068354,f,Seq Scan,83334,1798.846
+10000000,order,индексы,Bitmap Heap Scan,idx_events_user_id,103,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,105,0.166
+10000000,agg30,индексы,Bitmap Heap Scan,idx_events_created_at,820818,0,t,Aggregate → Gather Merge → Sort → Aggregate → Bitmap Heap Scan → Bitmap Index Scan,85596,481.965
+10000000,agg365,индексы,Seq Scan,,9999980,20,f,Aggregate → Seq Scan,83334,2911.460
+10000000,order,составной индекс,Bitmap Heap Scan,idx_events_user_created,103,0,t,Limit → Sort → Bitmap Heap Scan → Bitmap Index Scan,105,0.166
+10000000,agg365,индекс created_at после VACUUM,Seq Scan,,9999831,169,f,Aggregate → Seq Scan,83334,2967.926
+10000000,agg365,только индекс (enable_seqscan = off),Index Only Scan,idx_events_created_at,9999829,0,f,Aggregate → Index Only Scan,6485743,2880.850
+10000000,agg365,дневная сводка events_daily,Seq Scan,,1464,0,f,Aggregate → Seq Scan,16,0.577
+10000000,order,только составной индекс,Index Scan,idx_events_user_created,100,0,f,Limit → Index Scan,103,0.323
+10000000,order,"только составной индекс, enable_bitmapscan = off",Index Scan,idx_events_user_created,100,0,f,Limit → Index Scan,103,0.138
