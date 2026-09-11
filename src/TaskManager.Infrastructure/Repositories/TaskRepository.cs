@@ -31,6 +31,8 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
         int page,
         int pageSize,
         TaskSort? sort = null,
+        DateTime? createdFrom = null,
+        DateTime? createdTo = null,
         CancellationToken cancellationToken = default)
     {
         var query = DbSet
@@ -40,7 +42,7 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
             .Where(t => t.UserId == userId)
             .AsQueryable();
 
-        query = ApplyFilters(query, status, priority, projectId, dueDateFrom, dueDateTo);
+        query = ApplyFilters(query, status, priority, projectId, dueDateFrom, dueDateTo, createdFrom, createdTo);
 
         var totalCount = await query.CountAsync(cancellationToken);
 
@@ -68,6 +70,8 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
         int page,
         int pageSize,
         TaskSort? sort = null,
+        DateTime? createdFrom = null,
+        DateTime? createdTo = null,
         CancellationToken cancellationToken = default)
     {
         var query = DbSet
@@ -77,7 +81,7 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
             .Include(t => t.User)
             .AsQueryable();
 
-        query = ApplyFilters(query, status, priority, projectId, dueDateFrom, dueDateTo);
+        query = ApplyFilters(query, status, priority, projectId, dueDateFrom, dueDateTo, createdFrom, createdTo);
 
         var totalCount = await query.CountAsync(cancellationToken);
 
@@ -162,7 +166,9 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
         TaskPriority? priority,
         Guid? projectId,
         DateTime? dueDateFrom,
-        DateTime? dueDateTo)
+        DateTime? dueDateTo,
+        DateTime? createdFrom,
+        DateTime? createdTo)
     {
         if (status.HasValue)
         {
@@ -187,6 +193,17 @@ public class TaskRepository : BaseRepository<TaskItem>, ITaskRepository
         if (dueDateTo.HasValue)
         {
             query = query.Where(t => t.DueDate <= dueDateTo.Value);
+        }
+
+        // created_at is the partition key of tasks: these conditions let PostgreSQL skip other partitions
+        if (createdFrom.HasValue)
+        {
+            query = query.Where(t => t.CreatedAt >= createdFrom.Value);
+        }
+
+        if (createdTo.HasValue)
+        {
+            query = query.Where(t => t.CreatedAt <= createdTo.Value);
         }
 
         return query;

@@ -21,6 +21,8 @@ public interface ITaskRepository : IRepository<TaskItem>
     /// <param name="page">The page number (1-based).</param>
     /// <param name="pageSize">The page size.</param>
     /// <param name="sort">Optional sort order; null means newest first.</param>
+    /// <param name="createdFrom">Optional minimum creation date (partition key of tasks).</param>
+    /// <param name="createdTo">Optional maximum creation date, inclusive.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paginated result of tasks.</returns>
     Task<PagedResult<TaskItem>> GetByUserIdAsync(
@@ -33,6 +35,8 @@ public interface ITaskRepository : IRepository<TaskItem>
         int page,
         int pageSize,
         TaskSort? sort = null,
+        DateTime? createdFrom = null,
+        DateTime? createdTo = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -46,6 +50,8 @@ public interface ITaskRepository : IRepository<TaskItem>
     /// <param name="page">The page number (1-based).</param>
     /// <param name="pageSize">The page size.</param>
     /// <param name="sort">Optional sort order; null means newest first.</param>
+    /// <param name="createdFrom">Optional minimum creation date (partition key of tasks).</param>
+    /// <param name="createdTo">Optional maximum creation date, inclusive.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A paginated result of tasks.</returns>
     Task<PagedResult<TaskItem>> GetAllFilteredAsync(
@@ -57,6 +63,8 @@ public interface ITaskRepository : IRepository<TaskItem>
         int page,
         int pageSize,
         TaskSort? sort = null,
+        DateTime? createdFrom = null,
+        DateTime? createdTo = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

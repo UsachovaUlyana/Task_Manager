@@ -1,0 +1,55 @@
+
+=== Партиции lab03.events: сегодня + 3 дня вперёд + 1 день запаса
+events_2026_09_09
+events_2026_09_10
+events_2026_09_11
+events_2026_09_12
+events_2026_09_13
+events_2026_09_14
+events_2026_09_15
+
+=== GET /health/partitions
+{"status":"Healthy","checks":[{"name":"partitions","status":"Healthy","description":"All required partitions exist","data":{"tasks":"Ok","lab03.events":"Ok"}}]} HTTP 200
+
+=== Сбой: ночная задача не отработала, партиции events_2026_09_14 нет
+DROP TABLE
+
+=== GET /health/partitions
+{"status":"Unhealthy","checks":[{"name":"partitions","status":"Unhealthy","description":"Some required partitions are missing","data":{"tasks":"Ok","lab03.events":"Critical: missing events_2026_09_14"}}]} HTTP 503
+
+=== PartitionHealthCheck: POST /api/partitions/check
+tasks         Ok        missing: -
+lab03.events  Critical  missing: events_2026_09_14   alert: critical alert sent
+
+=== Через 5 минут проблема та же: POST /api/partitions/check
+tasks         Ok        missing: -
+lab03.events  Critical  missing: events_2026_09_14   alert: already notified
+
+=== Восстановление: CreatePartitionsJob, POST /api/partitions/ensure
+tasks         Ok        missing: -
+lab03.events  Ok        missing: events_2026_09_14   created: events_2026_09_14
+
+=== Лог задачи в API
+[21:23:28 INF] Table lab03.events: existing partitions 7, required 4, missing 0
+[21:23:30 INF] Table lab03.events: existing partitions 6, required 4, missing 1
+[21:23:30 WRN] Partition check CRITICAL for lab03.events: missing events_2026_09_14
+[21:23:30 INF] Table lab03.events: existing partitions 6, required 4, missing 1
+[21:23:30 WRN] Partition check CRITICAL for lab03.events: missing events_2026_09_14
+[21:23:32 INF] Table lab03.events: existing partitions 6, required 4, missing 1
+[21:23:32 WRN] Partition check CRITICAL for lab03.events: missing events_2026_09_14
+[21:23:33 INF] Partition job started at 2026-09-11 21:23:33 UTC
+[21:23:33 INF] Table lab03.events: existing partitions 6, required 5, missing 1
+[21:23:33 INF] Creating partition events_2026_09_14
+[21:23:33 INF] Partition events_2026_09_14 created successfully
+[21:23:33 INF] Partition job finished with status Ok
+
+=== Повторная проверка: POST /api/partitions/check
+tasks         Ok        missing: -
+lab03.events  Ok        missing: -   alert: recovery sent
+
+=== GET /health/partitions
+{"status":"Healthy","checks":[{"name":"partitions","status":"Healthy","description":"All required partitions exist","data":{"tasks":"Ok","lab03.events":"Ok"}}]} HTTP 200
+
+=== Состояние алертов (partition_alert_state)
+lab03.events|Ok|-|21:23:34|21:23:34
+tasks|Ok|-|21:18:16|

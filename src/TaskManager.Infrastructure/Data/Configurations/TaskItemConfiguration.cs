@@ -65,9 +65,12 @@ public class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.HasIndex(t => t.Priority);
         builder.HasIndex(t => t.DueDate);
 
+        // tasks is partitioned by created_at: the database key is (id, created_at),
+        // and task_tags references both columns (changeset 012).
         builder.HasMany(t => t.TaskTags)
             .WithOne(tt => tt.Task)
-            .HasForeignKey(tt => tt.TaskId)
+            .HasForeignKey(tt => new { tt.TaskId, tt.TaskCreatedAt })
+            .HasPrincipalKey(t => new { t.Id, t.CreatedAt })
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

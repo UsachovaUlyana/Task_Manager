@@ -1,0 +1,487 @@
+SET
+DELETE 0
+Output format is unaligned.
+=== A1. GET /api/tasks?createdFrom=2026-08-01&createdTo=2026-08-31T23:59:59 (Admin)
+--- A1 месяц, все задачи: COUNT | API (EF Core)
+
+SELECT count(*)::int
+FROM tasks AS t
+WHERE t.created_at >= '2026-08-01 00:00:00+00' AND t.created_at <= '2026-08-31 23:59:59+00'
+Finalize Aggregate  (cost=6171.00..6171.01 rows=1 width=4) (actual time=14.952..17.354 rows=1 loops=1)
+  Buffers: shared hit=3655
+  ->  Gather  (cost=6170.78..6170.99 rows=2 width=8) (actual time=14.841..17.347 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=3655
+        ->  Partial Aggregate  (cost=5170.78..5170.79 rows=1 width=8) (actual time=11.975..11.976 rows=1 loops=3)
+              Buffers: shared hit=3655
+              ->  Parallel Seq Scan on tasks_2026_08 t  (cost=0.00..4954.24 rows=86616 width=0) (actual time=0.008..9.070 rows=69293 loops=3)
+                    Filter: ((created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-08-31 23:59:59+00'::timestamp with time zone))
+                    Buffers: shared hit=3655
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.180 ms
+Execution Time: 17.393 ms
+
+--- A1 месяц, все задачи: страница | API (EF Core)
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.task_created_at, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+FROM (
+    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+    FROM tasks AS t
+    WHERE t.created_at >= '2026-08-01 00:00:00+00' AND t.created_at <= '2026-08-31 23:59:59+00'
+    ORDER BY t.created_at DESC
+    LIMIT 10 OFFSET 0
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+INNER JOIN users AS u ON t0.user_id = u.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t2.task_created_at, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id AND t0.created_at = t1.task_created_at
+ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+Sort  (cost=238.01..238.03 rows=10 width=395) (actual time=0.275..0.277 rows=12 loops=1)
+  Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+  Sort Method: quicksort  Memory: 29kB
+  Buffers: shared hit=117
+  ->  Nested Loop  (cost=2.46..237.84 rows=10 width=395) (actual time=0.078..0.251 rows=12 loops=1)
+        Buffers: shared hit=117
+        ->  Nested Loop Left Join  (cost=2.17..154.81 rows=10 width=275) (actual time=0.070..0.224 rows=12 loops=1)
+              Buffers: shared hit=81
+              ->  Hash Right Join  (cost=1.60..28.43 rows=10 width=193) (actual time=0.059..0.175 rows=10 loops=1)
+                    Hash Cond: (p.id = t.project_id)
+                    Buffers: shared hit=26
+                    ->  Seq Scan on projects p  (cost=0.00..23.00 rows=1000 width=65) (actual time=0.003..0.056 rows=1000 loops=1)
+                          Buffers: shared hit=13
+                    ->  Hash  (cost=1.48..1.48 rows=10 width=128) (actual time=0.033..0.034 rows=10 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                          Buffers: shared hit=13
+                          ->  Limit  (cost=0.42..1.48 rows=10 width=128) (actual time=0.017..0.024 rows=10 loops=1)
+                                Buffers: shared hit=13
+                                ->  Index Scan using tasks_2026_08_created_at_due_date_idx on tasks_2026_08 t  (cost=0.42..21985.47 rows=207879 width=128) (actual time=0.017..0.022 rows=10 loops=1)
+                                      Index Cond: ((created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-08-31 23:59:59+00'::timestamp with time zone))
+                                      Buffers: shared hit=13
+              ->  Nested Loop  (cost=0.57..12.63 rows=1 width=82) (actual time=0.004..0.004 rows=1 loops=10)
+                    Buffers: shared hit=55
+                    ->  Index Scan using pk_task_tags on task_tags t2  (cost=0.43..12.47 rows=1 width=40) (actual time=0.003..0.003 rows=1 loops=10)
+                          Index Cond: (task_id = t.id)
+                          Filter: (t.created_at = task_created_at)
+                          Buffers: shared hit=37
+                    ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.001..0.001 rows=1 loops=9)
+                          Index Cond: (id = t2.tag_id)
+                          Buffers: shared hit=18
+        ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.002..0.002 rows=1 loops=12)
+              Index Cond: (id = t.user_id)
+              Buffers: shared hit=36
+Planning:
+  Buffers: shared hit=32
+Planning Time: 0.713 ms
+Execution Time: 0.395 ms
+
+=== A2. GET /api/tasks?status=Pending&createdFrom=2026-09-01&createdTo=2026-09-07T23:59:59 (Admin)
+--- A2 неделя + статус: COUNT | API (EF Core)
+
+SELECT count(*)::int
+FROM tasks AS t
+WHERE t.status = 0 AND t.created_at >= '2026-09-01 00:00:00+00' AND t.created_at <= '2026-09-07 23:59:59+00'
+Aggregate  (cost=1629.78..1629.79 rows=1 width=4) (actual time=4.000..4.001 rows=1 loops=1)
+  Buffers: shared hit=1217
+  ->  Bitmap Heap Scan on tasks_2026_09 t  (cost=158.69..1605.20 rows=9830 width=0) (actual time=0.603..3.575 rows=9844 loops=1)
+        Recheck Cond: (status = 0)
+        Filter: ((created_at >= '2026-09-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-09-07 23:59:59+00'::timestamp with time zone))
+        Rows Removed by Filter: 4009
+        Heap Blocks: exact=1204
+        Buffers: shared hit=1217
+        ->  Bitmap Index Scan on tasks_2026_09_status_idx  (cost=0.00..156.23 rows=13858 width=0) (actual time=0.459..0.459 rows=13853 loops=1)
+              Index Cond: (status = 0)
+              Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.159 ms
+Execution Time: 4.072 ms
+
+=== A3. GET /api/tasks?createdFrom=2026-08-01&createdTo=2026-08-31T23:59:59 (пользователь)
+--- A3 месяц, задачи пользователя: страница | API (EF Core)
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, t1.task_id, t1.tag_id, t1.task_created_at, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at
+FROM (
+    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+    FROM tasks AS t
+    WHERE t.user_id = '335fc496-f143-433c-b8b5-48277f10419e'
+      AND t.created_at >= '2026-08-01 00:00:00+00' AND t.created_at <= '2026-08-31 23:59:59+00'
+    ORDER BY t.created_at DESC
+    LIMIT 10 OFFSET 0
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t2.task_created_at, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id AND t0.created_at = t1.task_created_at
+ORDER BY t0.created_at DESC, t0.id, p.id, t1.task_id, t1.tag_id
+Sort  (cost=185.33..185.36 rows=10 width=275) (actual time=0.265..0.267 rows=12 loops=1)
+  Sort Key: t.created_at DESC, t.id, p.id, t2.task_id, t2.tag_id
+  Sort Method: quicksort  Memory: 28kB
+  Buffers: shared hit=81
+  ->  Nested Loop Left Join  (cost=32.52..185.17 rows=10 width=275) (actual time=0.062..0.249 rows=12 loops=1)
+        Buffers: shared hit=81
+        ->  Hash Right Join  (cost=31.95..58.78 rows=10 width=193) (actual time=0.045..0.167 rows=10 loops=1)
+              Hash Cond: (p.id = t.project_id)
+              Buffers: shared hit=26
+              ->  Seq Scan on projects p  (cost=0.00..23.00 rows=1000 width=65) (actual time=0.003..0.058 rows=1000 loops=1)
+                    Buffers: shared hit=13
+              ->  Hash  (cost=31.83..31.83 rows=10 width=128) (actual time=0.029..0.029 rows=10 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                    Buffers: shared hit=13
+                    ->  Limit  (cost=0.42..31.83 rows=10 width=128) (actual time=0.014..0.020 rows=10 loops=1)
+                          Buffers: shared hit=13
+                          ->  Index Scan using tasks_2026_08_user_id_created_at_idx on tasks_2026_08 t  (cost=0.42..6681.06 rows=2127 width=128) (actual time=0.013..0.019 rows=10 loops=1)
+                                Index Cond: ((user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid) AND (created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-08-31 23:59:59+00'::timestamp with time zone))
+                                Buffers: shared hit=13
+        ->  Nested Loop  (cost=0.57..12.63 rows=1 width=82) (actual time=0.007..0.008 rows=1 loops=10)
+              Buffers: shared hit=55
+              ->  Index Scan using pk_task_tags on task_tags t2  (cost=0.43..12.47 rows=1 width=40) (actual time=0.006..0.006 rows=1 loops=10)
+                    Index Cond: (task_id = t.id)
+                    Filter: (t.created_at = task_created_at)
+                    Buffers: shared hit=37
+              ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.001..0.001 rows=1 loops=9)
+                    Index Cond: (id = t2.tag_id)
+                    Buffers: shared hit=18
+Planning:
+  Buffers: shared hit=26
+Planning Time: 0.510 ms
+Execution Time: 0.372 ms
+
+=== A4. GET /api/tasks/{id}: ключа партиционирования в запросе нет
+--- A4 задача по id | API (EF Core)
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, t0.id0, t0.id1, t1.task_id, t1.tag_id, t1.task_created_at, t1.id, t1.color, t1.created_at, t1.name, t0.created_at0, t0.description0, t0.name, t0.updated_at0, t0.created_at1, t0.email, t0.password_hash, t0.role, t0.updated_at1, t0.username
+FROM (
+    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id, p.id AS id0, p.created_at AS created_at0, p.description AS description0, p.name, p.updated_at AS updated_at0, u.id AS id1, u.created_at AS created_at1, u.email, u.password_hash, u.role, u.updated_at AS updated_at1, u.username
+    FROM tasks AS t
+    LEFT JOIN projects AS p ON t.project_id = p.id
+    INNER JOIN users AS u ON t.user_id = u.id
+    WHERE t.id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'
+    LIMIT 1
+) AS t0
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t2.task_created_at, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id AND t0.created_at = t1.task_created_at
+ORDER BY t0.id, t0.id0, t0.id1, t1.task_id, t1.tag_id
+Sort  (cost=30.70..30.71 rows=1 width=478) (actual time=0.322..0.327 rows=2 loops=1)
+  Sort Key: t.id, p.id, u.id, t2.task_id, t2.tag_id
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=90
+  ->  Nested Loop Left Join  (cost=1.13..30.69 rows=1 width=478) (actual time=0.303..0.311 rows=2 loops=1)
+        Buffers: shared hit=90
+        ->  Limit  (cost=0.56..18.04 rows=1 width=396) (actual time=0.281..0.286 rows=1 loops=1)
+              Buffers: shared hit=82
+              ->  Nested Loop  (cost=0.56..525.10 rows=30 width=396) (actual time=0.280..0.285 rows=1 loops=1)
+                    Buffers: shared hit=82
+                    ->  Nested Loop Left Join  (cost=0.28..308.03 rows=30 width=276) (actual time=0.271..0.275 rows=1 loops=1)
+                          Buffers: shared hit=79
+                          ->  Append  (cost=0.00..219.25 rows=30 width=211) (actual time=0.261..0.265 rows=1 loops=1)
+                                Buffers: shared hit=76
+                                ->  Seq Scan on tasks_2024_08 t_1  (cost=0.00..0.00 rows=1 width=628) (actual time=0.010..0.010 rows=0 loops=1)
+                                      Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                ->  Index Scan using tasks_2024_09_pkey on tasks_2024_09 t_2  (cost=0.42..8.44 rows=1 width=128) (actual time=0.012..0.012 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2024_10_pkey on tasks_2024_10 t_3  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.008 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2024_11_pkey on tasks_2024_11 t_4  (cost=0.42..8.44 rows=1 width=128) (actual time=0.013..0.014 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2024_12_pkey on tasks_2024_12 t_5  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.008 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_01_pkey on tasks_2025_01 t_6  (cost=0.42..8.44 rows=1 width=128) (actual time=0.009..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_02_pkey on tasks_2025_02 t_7  (cost=0.42..8.44 rows=1 width=128) (actual time=0.009..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_03_pkey on tasks_2025_03 t_8  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.008 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_04_pkey on tasks_2025_04 t_9  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.008 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_05_pkey on tasks_2025_05 t_10  (cost=0.42..8.44 rows=1 width=128) (actual time=0.009..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_06_pkey on tasks_2025_06 t_11  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.008 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_07_pkey on tasks_2025_07 t_12  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.008 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_08_pkey on tasks_2025_08 t_13  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.008 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_09_pkey on tasks_2025_09 t_14  (cost=0.42..8.44 rows=1 width=128) (actual time=0.010..0.010 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_10_pkey on tasks_2025_10 t_15  (cost=0.42..8.44 rows=1 width=128) (actual time=0.009..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_11_pkey on tasks_2025_11 t_16  (cost=0.42..8.44 rows=1 width=128) (actual time=0.007..0.007 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2025_12_pkey on tasks_2025_12 t_17  (cost=0.42..8.44 rows=1 width=128) (actual time=0.007..0.007 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_01_pkey on tasks_2026_01 t_18  (cost=0.42..8.44 rows=1 width=128) (actual time=0.015..0.015 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_02_pkey on tasks_2026_02 t_19  (cost=0.42..8.44 rows=1 width=128) (actual time=0.007..0.007 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_03_pkey on tasks_2026_03 t_20  (cost=0.42..8.44 rows=1 width=128) (actual time=0.009..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_04_pkey on tasks_2026_04 t_21  (cost=0.42..8.44 rows=1 width=128) (actual time=0.007..0.007 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_05_pkey on tasks_2026_05 t_22  (cost=0.42..8.44 rows=1 width=128) (actual time=0.009..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_06_pkey on tasks_2026_06 t_23  (cost=0.42..8.44 rows=1 width=128) (actual time=0.009..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_07_pkey on tasks_2026_07 t_24  (cost=0.42..8.44 rows=1 width=128) (actual time=0.029..0.029 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_08_pkey on tasks_2026_08 t_25  (cost=0.42..8.44 rows=1 width=128) (actual time=0.008..0.009 rows=0 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=3
+                                ->  Index Scan using tasks_2026_09_pkey on tasks_2026_09 t_26  (cost=0.42..8.44 rows=1 width=128) (actual time=0.012..0.012 rows=1 loops=1)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                      Buffers: shared hit=4
+                                ->  Seq Scan on tasks_2026_10 t_27  (cost=0.00..0.00 rows=1 width=628) (never executed)
+                                      Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                ->  Seq Scan on tasks_2026_11 t_28  (cost=0.00..0.00 rows=1 width=628) (never executed)
+                                      Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                ->  Seq Scan on tasks_2026_12 t_29  (cost=0.00..0.00 rows=1 width=628) (never executed)
+                                      Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                                ->  Index Scan using tasks_2027_01_pkey on tasks_2027_01 t_30  (cost=0.14..8.16 rows=1 width=628) (never executed)
+                                      Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+                          ->  Index Scan using projects_pkey on projects p  (cost=0.28..2.96 rows=1 width=65) (actual time=0.007..0.007 rows=1 loops=1)
+                                Index Cond: (id = t.project_id)
+                                Buffers: shared hit=3
+                    ->  Index Scan using users_pkey on users u  (cost=0.29..7.24 rows=1 width=120) (actual time=0.007..0.007 rows=1 loops=1)
+                          Index Cond: (id = t.user_id)
+                          Buffers: shared hit=3
+        ->  Nested Loop  (cost=0.57..12.63 rows=1 width=82) (actual time=0.020..0.023 rows=2 loops=1)
+              Buffers: shared hit=8
+              ->  Index Scan using pk_task_tags on task_tags t2  (cost=0.43..12.47 rows=1 width=40) (actual time=0.013..0.014 rows=2 loops=1)
+                    Index Cond: (task_id = t.id)
+                    Filter: (t.created_at = task_created_at)
+                    Buffers: shared hit=4
+              ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.003..0.003 rows=1 loops=2)
+                    Index Cond: (id = t2.tag_id)
+                    Buffers: shared hit=4
+Planning:
+  Buffers: shared hit=59
+Planning Time: 1.954 ms
+Execution Time: 0.875 ms
+
+=== A5. GET /api/tasks/stats (Admin): все задачи
+--- A5 статистика по статусам | API (EF Core)
+
+SELECT t.status AS "Status", count(*)::int AS "Count", count(*) FILTER (WHERE t.due_date < '2026-09-11 21:23:15.995856+00' AND t.status IN (0, 1))::int AS "OverdueCount"
+FROM tasks AS t
+GROUP BY t.status
+ORDER BY t.status
+Finalize GroupAggregate  (cost=146579.53..146580.59 rows=4 width=12) (actual time=592.298..600.474 rows=4 loops=1)
+  Group Key: t.status
+  Buffers: shared hit=14 read=87919
+  ->  Gather Merge  (cost=146579.53..146580.47 rows=8 width=20) (actual time=592.284..600.457 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=14 read=87919
+        ->  Sort  (cost=145579.51..145579.52 rows=4 width=20) (actual time=572.340..572.347 rows=4 loops=3)
+              Sort Key: t.status
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=14 read=87919
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=145579.43..145579.47 rows=4 width=20) (actual time=572.271..572.278 rows=4 loops=3)
+                    Group Key: t.status
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared read=87919
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Append  (cost=0.00..119537.09 rows=2083387 width=12) (actual time=39.582..381.095 rows=1666667 loops=3)
+                          Buffers: shared read=87919
+                          ->  Seq Scan on tasks_2024_08 t_1  (cost=0.00..0.00 rows=1 width=12) (actual time=0.012..0.013 rows=0 loops=1)
+                          ->  Seq Scan on tasks_2026_10 t_27  (cost=0.00..0.00 rows=1 width=12) (actual time=0.003..0.003 rows=0 loops=1)
+                          ->  Seq Scan on tasks_2026_11 t_28  (cost=0.00..0.00 rows=1 width=12) (actual time=0.003..0.004 rows=0 loops=1)
+                          ->  Seq Scan on tasks_2026_12 t_29  (cost=0.00..0.00 rows=1 width=12) (actual time=0.003..0.003 rows=0 loops=1)
+                          ->  Parallel Seq Scan on tasks_2026_04 t_21  (cost=0.00..4544.49 rows=87049 width=12) (actual time=39.879..76.691 rows=208918 loops=1)
+                                Buffers: shared read=3674
+                          ->  Parallel Seq Scan on tasks_2025_04 t_9  (cost=0.00..4539.88 rows=86988 width=12) (actual time=37.494..73.003 rows=208771 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2026_06 t_23  (cost=0.00..4539.82 rows=86982 width=12) (actual time=0.071..32.160 rows=208758 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2024_12 t_5  (cost=0.00..4539.80 rows=86980 width=12) (actual time=0.064..30.604 rows=208751 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2024_11 t_4  (cost=0.00..4539.31 rows=86931 width=12) (actual time=0.060..30.822 rows=208635 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2025_02 t_7  (cost=0.00..4537.10 rows=86910 width=12) (actual time=0.049..30.527 rows=208583 loops=1)
+                                Buffers: shared read=3668
+                          ->  Parallel Seq Scan on tasks_2025_07 t_12  (cost=0.00..4536.13 rows=86913 width=12) (actual time=0.076..29.946 rows=208591 loops=1)
+                                Buffers: shared read=3667
+                          ->  Parallel Seq Scan on tasks_2025_12 t_17  (cost=0.00..4535.47 rows=86947 width=12) (actual time=0.068..32.061 rows=208673 loops=1)
+                                Buffers: shared read=3666
+                          ->  Parallel Seq Scan on tasks_2025_06 t_11  (cost=0.00..4533.27 rows=86827 width=12) (actual time=0.073..28.178 rows=208384 loops=1)
+                                Buffers: shared read=3665
+                          ->  Parallel Seq Scan on tasks_2025_05 t_10  (cost=0.00..4532.18 rows=86818 width=12) (actual time=0.067..29.332 rows=208364 loops=1)
+                                Buffers: shared read=3664
+                          ->  Parallel Seq Scan on tasks_2026_05 t_22  (cost=0.00..4532.07 rows=86807 width=12) (actual time=0.068..29.864 rows=208336 loops=1)
+                                Buffers: shared read=3664
+                          ->  Parallel Seq Scan on tasks_2025_09 t_14  (cost=0.00..4531.22 rows=86822 width=12) (actual time=0.064..32.515 rows=208372 loops=1)
+                                Buffers: shared read=3663
+                          ->  Parallel Seq Scan on tasks_2024_10 t_3  (cost=0.00..4531.20 rows=86820 width=12) (actual time=0.063..30.636 rows=208369 loops=1)
+                                Buffers: shared read=3663
+                          ->  Parallel Seq Scan on tasks_2025_01 t_6  (cost=0.00..4530.49 rows=86749 width=12) (actual time=0.064..32.832 rows=208198 loops=1)
+                                Buffers: shared read=3663
+                          ->  Parallel Seq Scan on tasks_2026_02 t_19  (cost=0.00..4530.01 rows=86801 width=12) (actual time=0.057..8.811 rows=69441 loops=3)
+                                Buffers: shared read=3662
+                          ->  Parallel Seq Scan on tasks_2026_07 t_24  (cost=0.00..4529.45 rows=86745 width=12) (actual time=0.058..13.239 rows=104094 loops=2)
+                                Buffers: shared read=3662
+                          ->  Parallel Seq Scan on tasks_2025_03 t_8  (cost=0.00..4528.08 rows=86708 width=12) (actual time=0.046..28.332 rows=208100 loops=1)
+                                Buffers: shared read=3661
+                          ->  Parallel Seq Scan on tasks_2025_08 t_13  (cost=0.00..4526.91 rows=86691 width=12) (actual time=0.040..28.812 rows=208058 loops=1)
+                                Buffers: shared read=3660
+                          ->  Parallel Seq Scan on tasks_2026_03 t_20  (cost=0.00..4526.09 rows=86709 width=12) (actual time=0.041..26.089 rows=208102 loops=1)
+                                Buffers: shared read=3659
+                          ->  Parallel Seq Scan on tasks_2025_11 t_16  (cost=0.00..4524.67 rows=86667 width=12) (actual time=0.044..27.134 rows=208001 loops=1)
+                                Buffers: shared read=3658
+                          ->  Parallel Seq Scan on tasks_2026_08 t_25  (cost=0.00..4521.16 rows=86616 width=12) (actual time=0.043..26.095 rows=207879 loops=1)
+                                Buffers: shared read=3655
+                          ->  Parallel Seq Scan on tasks_2026_01 t_18  (cost=0.00..4518.65 rows=86565 width=12) (actual time=0.045..24.882 rows=207755 loops=1)
+                                Buffers: shared read=3653
+                          ->  Parallel Seq Scan on tasks_2025_10 t_15  (cost=0.00..4517.56 rows=86556 width=12) (actual time=0.046..25.984 rows=207735 loops=1)
+                                Buffers: shared read=3652
+                          ->  Parallel Seq Scan on tasks_2024_09 t_2  (cost=0.00..3277.50 rows=82150 width=12) (actual time=0.038..20.170 rows=139655 loops=1)
+                                Buffers: shared read=2456
+                          ->  Parallel Seq Scan on tasks_2026_09 t_26  (cost=0.00..1606.95 rows=40295 width=12) (actual time=41.342..49.823 rows=68502 loops=1)
+                                Buffers: shared read=1204
+                          ->  Parallel Seq Scan on tasks_2027_01 t_30  (cost=0.00..10.71 rows=71 width=12) (actual time=0.002..0.002 rows=0 loops=1)
+Planning:
+  Buffers: shared read=35
+Planning Time: 0.950 ms
+JIT:
+  Functions: 195
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 9.299 ms, Inlining 0.000 ms, Optimization 4.563 ms, Emission 114.794 ms, Total 128.657 ms
+Execution Time: 603.797 ms
+
+=== A6. GET /api/tasks без фильтров (Admin): страница
+--- A6 без фильтров: страница | API (EF Core)
+
+SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.task_created_at, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+FROM (
+    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+    FROM tasks AS t
+    ORDER BY t.created_at DESC
+    LIMIT 10 OFFSET 0
+) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+INNER JOIN users AS u ON t0.user_id = u.id
+LEFT JOIN (
+    SELECT t2.task_id, t2.tag_id, t2.task_created_at, t3.id, t3.color, t3.created_at, t3.name
+    FROM task_tags AS t2
+    INNER JOIN tags AS t3 ON t2.tag_id = t3.id
+) AS t1 ON t0.id = t1.task_id AND t0.created_at = t1.task_created_at
+ORDER BY t0.created_at DESC, t0.id, p.id, u.id, t1.task_id, t1.tag_id
+Sort  (cost=248.60..248.63 rows=10 width=395) (actual time=0.407..0.412 rows=11 loops=1)
+  Sort Key: t.created_at DESC, t.id, p.id, t.user_id, t2.task_id, t2.tag_id
+  Sort Method: quicksort  Memory: 29kB
+  Buffers: shared hit=112
+  ->  Nested Loop  (cost=13.05..248.44 rows=10 width=395) (actual time=0.182..0.382 rows=11 loops=1)
+        Buffers: shared hit=112
+        ->  Nested Loop Left Join  (cost=12.77..165.41 rows=10 width=275) (actual time=0.171..0.317 rows=11 loops=1)
+              Buffers: shared hit=79
+              ->  Hash Right Join  (cost=12.20..39.03 rows=10 width=193) (actual time=0.160..0.253 rows=10 loops=1)
+                    Hash Cond: (p.id = t.project_id)
+                    Buffers: shared hit=29
+                    ->  Seq Scan on projects p  (cost=0.00..23.00 rows=1000 width=65) (actual time=0.004..0.059 rows=1000 loops=1)
+                          Buffers: shared hit=13
+                    ->  Hash  (cost=12.07..12.07 rows=10 width=128) (actual time=0.112..0.115 rows=10 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                          Buffers: shared hit=16
+                          ->  Limit  (cost=11.01..12.07 rows=10 width=128) (actual time=0.095..0.106 rows=10 loops=1)
+                                Buffers: shared hit=16
+                                ->  Append  (cost=11.01..528908.77 rows=5000124 width=128) (actual time=0.094..0.104 rows=10 loops=1)
+                                      Buffers: shared hit=16
+                                      ->  Index Scan using tasks_2027_01_created_at_due_date_idx on tasks_2027_01 t_30  (cost=0.14..45.94 rows=120 width=628) (actual time=0.009..0.010 rows=0 loops=1)
+                                            Buffers: shared hit=1
+                                      ->  Index Scan using tasks_2026_12_created_at_due_date_idx on tasks_2026_12 t_29  (cost=0.12..8.14 rows=1 width=628) (actual time=0.005..0.006 rows=0 loops=1)
+                                            Buffers: shared hit=1
+                                      ->  Index Scan using tasks_2026_11_created_at_due_date_idx on tasks_2026_11 t_28  (cost=0.12..8.14 rows=1 width=628) (actual time=0.061..0.061 rows=0 loops=1)
+                                            Buffers: shared hit=1
+                                      ->  Index Scan using tasks_2026_10_created_at_due_date_idx on tasks_2026_10 t_27  (cost=0.12..8.14 rows=1 width=628) (actual time=0.006..0.006 rows=0 loops=1)
+                                            Buffers: shared hit=1
+                                      ->  Index Scan using tasks_2026_09_created_at_due_date_idx on tasks_2026_09 t_26  (cost=0.29..6903.82 rows=68502 width=128) (actual time=0.011..0.018 rows=10 loops=1)
+                                            Buffers: shared hit=12
+                                      ->  Index Scan using tasks_2026_08_created_at_due_date_idx on tasks_2026_08 t_25  (cost=0.42..20946.08 rows=207879 width=128) (never executed)
+                                      ->  Index Scan using tasks_2026_07_created_at_due_date_idx on tasks_2026_07 t_24  (cost=0.42..20983.17 rows=208188 width=128) (never executed)
+                                      ->  Index Scan using tasks_2026_06_created_at_due_date_idx on tasks_2026_06 t_23  (cost=0.42..21031.78 rows=208758 width=128) (never executed)
+                                      ->  Index Scan using tasks_2026_05_created_at_due_date_idx on tasks_2026_05 t_22  (cost=0.42..20997.14 rows=208336 width=128) (never executed)
+                                      ->  Index Scan using tasks_2026_04_created_at_due_date_idx on tasks_2026_04 t_21  (cost=0.42..21054.17 rows=208918 width=128) (never executed)
+                                      ->  Index Scan using tasks_2026_03_created_at_due_date_idx on tasks_2026_03 t_20  (cost=0.42..20969.95 rows=208102 width=128) (never executed)
+                                      ->  Index Scan using tasks_2026_02_created_at_due_date_idx on tasks_2026_02 t_19  (cost=0.42..20985.25 rows=208322 width=128) (never executed)
+                                      ->  Index Scan using tasks_2026_01_created_at_due_date_idx on tasks_2026_01 t_18  (cost=0.42..20932.63 rows=207755 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_12_created_at_due_date_idx on tasks_2025_12 t_17  (cost=0.42..21014.49 rows=208673 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_11_created_at_due_date_idx on tasks_2025_11 t_16  (cost=0.42..20960.40 rows=208001 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_10_created_at_due_date_idx on tasks_2025_10 t_15  (cost=0.42..20928.27 rows=207735 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_09_created_at_due_date_idx on tasks_2025_09 t_14  (cost=0.42..20993.85 rows=208372 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_08_created_at_due_date_idx on tasks_2025_08 t_13  (cost=0.42..20969.28 rows=208058 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_07_created_at_due_date_idx on tasks_2025_07 t_12  (cost=0.42..21017.13 rows=208591 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_06_created_at_due_date_idx on tasks_2025_06 t_11  (cost=0.42..21002.10 rows=208384 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_05_created_at_due_date_idx on tasks_2025_05 t_10  (cost=0.42..20997.39 rows=208364 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_04_created_at_due_date_idx on tasks_2025_04 t_9  (cost=0.42..21031.36 rows=208771 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_03_created_at_due_date_idx on tasks_2025_03 t_8  (cost=0.42..20977.39 rows=208100 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_02_created_at_due_date_idx on tasks_2025_02 t_7  (cost=0.42..21017.12 rows=208583 width=128) (never executed)
+                                      ->  Index Scan using tasks_2025_01_created_at_due_date_idx on tasks_2025_01 t_6  (cost=0.42..20986.93 rows=208198 width=128) (never executed)
+                                      ->  Index Scan using tasks_2024_12_created_at_due_date_idx on tasks_2024_12 t_5  (cost=0.42..21031.24 rows=208751 width=128) (never executed)
+                                      ->  Index Scan using tasks_2024_11_created_at_due_date_idx on tasks_2024_11 t_4  (cost=0.42..21029.93 rows=208635 width=128) (never executed)
+                                      ->  Index Scan using tasks_2024_10_created_at_due_date_idx on tasks_2024_10 t_3  (cost=0.42..20993.95 rows=208369 width=128) (never executed)
+                                      ->  Index Scan using tasks_2024_09_created_at_due_date_idx on tasks_2024_09 t_2  (cost=0.42..14074.82 rows=139655 width=128) (never executed)
+                                      ->  Index Scan using tasks_2024_08_created_at_due_date_idx on tasks_2024_08 t_1  (cost=0.12..8.14 rows=1 width=628) (never executed)
+              ->  Nested Loop  (cost=0.57..12.63 rows=1 width=82) (actual time=0.005..0.006 rows=1 loops=10)
+                    Buffers: shared hit=50
+                    ->  Index Scan using pk_task_tags on task_tags t2  (cost=0.43..12.47 rows=1 width=40) (actual time=0.004..0.004 rows=1 loops=10)
+                          Index Cond: (task_id = t.id)
+                          Filter: (t.created_at = task_created_at)
+                          Buffers: shared hit=36
+                    ->  Index Scan using tags_pkey on tags t3  (cost=0.14..0.16 rows=1 width=42) (actual time=0.002..0.002 rows=1 loops=7)
+                          Index Cond: (id = t2.tag_id)
+                          Buffers: shared hit=14
+        ->  Index Scan using users_pkey on users u  (cost=0.29..8.30 rows=1 width=120) (actual time=0.003..0.003 rows=1 loops=11)
+              Index Cond: (id = t.user_id)
+              Buffers: shared hit=33
+Planning:
+  Buffers: shared hit=59
+Planning Time: 1.218 ms
+Execution Time: 0.713 ms
+
+Output format is aligned.
+=== Итог: запросы API
+                  query                  | total | in_plan | executed | removed |         scan         | actual_rows | buffers | planning_ms | execution_ms 
+-----------------------------------------+-------+---------+----------+---------+----------------------+-------------+---------+-------------+--------------
+ A1 месяц, все задачи: COUNT             |    30 |       1 |        1 |       0 | Seq Scan             |      207879 |    3655 |       0.180 |       17.393
+ A1 месяц, все задачи: страница          |    30 |       1 |        1 |       0 | Index Scan           |          10 |     117 |       0.713 |        0.395
+ A2 неделя + статус: COUNT               |    30 |       1 |        1 |       0 | Bitmap Heap Scan     |        9844 |    1217 |       0.159 |        4.072
+ A3 месяц, задачи пользователя: страница |    30 |       1 |        1 |       0 | Index Scan           |          10 |      81 |       0.510 |        0.372
+ A4 задача по id                         |    30 |      30 |       26 |       0 | Index Scan, Seq Scan |           1 |      90 |       1.954 |        0.875
+ A5 статистика по статусам               |    30 |      30 |       30 |       0 | Seq Scan             |     5000001 |   87933 |       0.950 |      603.797
+ A6 без фильтров: страница               |    30 |      30 |        5 |       0 | Index Scan           |          10 |     112 |       1.218 |        0.713
+(7 rows)
+

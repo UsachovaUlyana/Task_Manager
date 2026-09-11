@@ -1,0 +1,227 @@
+SET
+=== Часть 3. RANGE по цене
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+INSERT 0 6
+   partition_name   | id |   name   | price  
+--------------------+----+----------+--------
+ products_cheap     |  1 | Карандаш |     15
+ products_cheap     |  2 | Тетрадь  |  99.99
+ products_medium    |  3 | Рюкзак   |    100
+ products_medium    |  4 | Наушники | 999.99
+ products_expensive |  5 | Монитор  |   1000
+ products_expensive |  6 | Ноутбук  |  85000
+(6 rows)
+
+--- 300 000 товаров с ценой от 1 до 5 000
+INSERT 0 300000
+ANALYZE
+   partition_name   | count  |  min   |  max   
+--------------------+--------+--------+--------
+ products_cheap     |   5924 |   1.00 |  99.99
+ products_medium    |  53948 | 100.00 | 999.99
+ products_expensive | 240134 |   1000 |  85000
+(3 rows)
+
+                              try_sql                              
+-------------------------------------------------------------------
+ ОШИБКА [23514]: no partition of relation "products" found for row
+(1 row)
+
+Output format is unaligned.
+--- price от 100 до 500 | RANGE по цене
+
+SELECT * FROM lab03.products WHERE price >= 100 AND price < 500
+Seq Scan on products_medium products  (cost=0.00..1257.22 rows=24001 width=32) (actual time=0.005..6.445 rows=23945 loops=1)
+  Filter: ((price >= '100'::numeric) AND (price < '500'::numeric))
+  Rows Removed by Filter: 30003
+  Buffers: shared hit=448
+Planning Time: 0.094 ms
+Execution Time: 7.314 ms
+
+--- price от 50 до 150 | RANGE по цене
+
+SELECT * FROM lab03.products WHERE price >= 50 AND price < 150
+Append  (cost=0.00..1426.50 rows=6085 width=32) (actual time=0.005..6.517 rows=6115 loops=1)
+  Buffers: shared hit=498
+  ->  Seq Scan on products_cheap products_1  (cost=0.00..138.86 rows=3005 width=32) (actual time=0.005..0.688 rows=3004 loops=1)
+        Filter: ((price >= '50'::numeric) AND (price < '150'::numeric))
+        Rows Removed by Filter: 2920
+        Buffers: shared hit=50
+  ->  Seq Scan on products_medium products_2  (cost=0.00..1257.22 rows=3080 width=32) (actual time=0.008..5.459 rows=3111 loops=1)
+        Filter: ((price >= '50'::numeric) AND (price < '150'::numeric))
+        Rows Removed by Filter: 50837
+        Buffers: shared hit=448
+Planning Time: 0.119 ms
+Execution Time: 6.735 ms
+
+Output format is aligned.
+=== Часть 4. LIST по типу клиента
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+--- 300 000 клиентов: B2C 70 %, B2B 25 %, Enterprise 5 %
+INSERT 0 300000
+ANALYZE
+    partition_name    | count  
+----------------------+--------
+ customers_b2c        | 209933
+ customers_b2b        |  75001
+ customers_enterprise |  15066
+(3 rows)
+
+Output format is unaligned.
+--- customer_type = B2B | LIST
+
+SELECT * FROM lab03.customers WHERE customer_type = 'B2B'
+Seq Scan on customers_b2b customers  (cost=0.00..1538.51 rows=75001 width=32) (actual time=0.011..9.403 rows=75001 loops=1)
+  Filter: ((customer_type)::text = 'B2B'::text)
+  Buffers: shared hit=601
+Planning Time: 0.138 ms
+Execution Time: 12.543 ms
+
+--- customer_type IN (B2B, Enterprise) | LIST
+
+SELECT * FROM lab03.customers WHERE customer_type IN ('B2B', 'Enterprise')
+Append  (cost=0.00..2303.17 rows=90067 width=33) (actual time=0.009..17.703 rows=90067 loops=1)
+  Buffers: shared hit=727
+  ->  Seq Scan on customers_b2b customers_1  (cost=0.00..1538.51 rows=75001 width=32) (actual time=0.008..9.655 rows=75001 loops=1)
+        Filter: ((customer_type)::text = ANY ('{B2B,Enterprise}'::text[]))
+        Buffers: shared hit=601
+  ->  Seq Scan on customers_enterprise customers_2  (cost=0.00..314.33 rows=15066 width=39) (actual time=0.040..2.134 rows=15066 loops=1)
+        Filter: ((customer_type)::text = ANY ('{B2B,Enterprise}'::text[]))
+        Buffers: shared hit=126
+Planning Time: 0.090 ms
+Execution Time: 21.094 ms
+
+Output format is aligned.
+=== Часть 5. Неизвестное значение и DEFAULT
+                              try_sql                               
+--------------------------------------------------------------------
+ ОШИБКА [23514]: no partition of relation "customers" found for row
+(1 row)
+
+CREATE TABLE
+                             try_sql                              
+------------------------------------------------------------------
+ OK: INSERT INTO lab03.customers VALUES (100, 'Test User', 'VIP')
+(1 row)
+
+  partition_name   | id  |    name     | customer_type 
+-------------------+-----+-------------+---------------
+ customers_default | 100 | Test User   | VIP
+ customers_b2b     | 100 | Клиент #100 | B2B
+(2 rows)
+
+--- проблема DEFAULT: отдельную партицию для VIP теперь нельзя создать, пока строки лежат в DEFAULT
+                                                       try_sql                                                        
+----------------------------------------------------------------------------------------------------------------------
+ ОШИБКА [23514]: updated partition constraint for default partition "customers_default" would be violated by some row
+(1 row)
+
+--- как исправить: отсоединить DEFAULT, создать партицию, перенести строки, вернуть DEFAULT
+BEGIN
+ALTER TABLE
+CREATE TABLE
+INSERT 0 1
+DELETE 1
+ALTER TABLE
+COMMIT
+ partition_name | id  |    name     | customer_type 
+----------------+-----+-------------+---------------
+ customers_vip  | 100 | Test User   | VIP
+ customers_b2b  | 100 | Клиент #100 | B2B
+(2 rows)
+
+Output format is unaligned.
+--- DEFAULT-партиция просматривается запросами по любым значениям, которых нет в списке
+--- customer_type = Premium | LIST + DEFAULT
+
+SELECT * FROM lab03.customers WHERE customer_type = 'Premium'
+Seq Scan on customers_default customers  (cost=0.00..16.88 rows=3 width=118) (actual time=0.005..0.005 rows=0 loops=1)
+  Filter: ((customer_type)::text = 'Premium'::text)
+  Buffers: shared hit=1
+Planning Time: 0.045 ms
+Execution Time: 0.012 ms
+
+Output format is aligned.
+=== Часть 6. HASH по user_id
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+--- 1 000 000 событий 100 000 пользователей за 3 года
+Timing is on.
+INSERT 0 1000000
+Time: 1546.706 ms (00:01.547)
+Timing is off.
+ANALYZE
+ partition_name | count  |  pct  | users 
+----------------+--------+-------+-------
+ user_events_0  | 251508 | 25.15 | 25124
+ user_events_1  | 250013 | 25.00 | 24977
+ user_events_2  | 249226 | 24.92 | 24970
+ user_events_3  | 249253 | 24.93 | 24924
+(4 rows)
+
+Output format is unaligned.
+--- user_id = 42 | HASH по user_id
+
+SELECT * FROM lab03.user_events WHERE user_id = 42
+Gather  (cost=1000.00..4732.54 rows=10 width=30) (actual time=1.182..27.488 rows=15 loops=1)
+  Workers Planned: 1
+  Workers Launched: 1
+  Buffers: shared hit=1899
+  ->  Parallel Seq Scan on user_events_2 user_events  (cost=0.00..3731.54 rows=6 width=30) (actual time=0.492..5.241 rows=8 loops=2)
+        Filter: (user_id = 42)
+        Rows Removed by Filter: 124606
+        Buffers: shared hit=1899
+Planning Time: 0.073 ms
+Execution Time: 27.511 ms
+
+--- события старше 3 лет | HASH по user_id
+
+SELECT COUNT(*) FROM lab03.user_events WHERE created_at < TIMESTAMP '2026-09-11' - INTERVAL '2 years 11 months'
+Finalize Aggregate  (cost=16055.75..16055.76 rows=1 width=8) (actual time=37.442..44.229 rows=1 loops=1)
+  Buffers: shared hit=7619
+  ->  Gather  (cost=16055.54..16055.75 rows=2 width=8) (actual time=37.189..44.220 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=7619
+        ->  Partial Aggregate  (cost=15055.54..15055.55 rows=1 width=8) (actual time=21.053..21.056 rows=1 loops=3)
+              Buffers: shared hit=7619
+              ->  Parallel Append  (cost=0.00..15027.67 rows=11146 width=0) (actual time=0.012..20.560 rows=9238 loops=3)
+                    Buffers: shared hit=7619
+                    ->  Parallel Seq Scan on user_events_0 user_events_1  (cost=0.00..3765.32 rows=4122 width=0) (actual time=0.009..6.629 rows=2314 loops=3)
+                          Filter: (created_at < '2023-10-11 00:00:00'::timestamp without time zone)
+                          Rows Removed by Filter: 81522
+                          Buffers: shared hit=1916
+                    ->  Parallel Seq Scan on user_events_1 user_events_2  (cost=0.00..3743.33 rows=3880 width=0) (actual time=0.007..7.045 rows=3414 loops=2)
+                          Filter: (created_at < '2023-10-11 00:00:00'::timestamp without time zone)
+                          Rows Removed by Filter: 121592
+                          Buffers: shared hit=1905
+                    ->  Parallel Seq Scan on user_events_3 user_events_4  (cost=0.00..3731.74 rows=3899 width=0) (actual time=0.005..13.603 rows=6980 loops=1)
+                          Filter: (created_at < '2023-10-11 00:00:00'::timestamp without time zone)
+                          Rows Removed by Filter: 242273
+                          Buffers: shared hit=1899
+                    ->  Parallel Seq Scan on user_events_2 user_events_3  (cost=0.00..3731.54 rows=3835 width=0) (actual time=0.018..12.125 rows=6961 loops=1)
+                          Filter: (created_at < '2023-10-11 00:00:00'::timestamp without time zone)
+                          Rows Removed by Filter: 242265
+                          Buffers: shared hit=1899
+Planning Time: 0.138 ms
+Execution Time: 44.320 ms
+
+Output format is aligned.
+--- удаление старых данных в HASH — это DELETE по всем партициям, а не DROP одной партиции
+Timing is on.
+BEGIN
+Time: 0.163 ms
+DELETE 27713
+Time: 57.391 ms
+ROLLBACK
+Time: 0.157 ms
+Timing is off.

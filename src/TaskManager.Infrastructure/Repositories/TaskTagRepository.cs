@@ -41,8 +41,11 @@ public class TaskTagRepository : ITaskTagRepository
             const string deleteSql = "DELETE FROM task_tags WHERE task_id = @TaskId";
             await connection.ExecuteAsync(deleteSql, new { TaskId = taskId }, transaction);
 
-            // Then, insert new tags
-            const string insertSql = "INSERT INTO task_tags (task_id, tag_id) VALUES (@TaskId, @TagId)";
+            // Then, insert new tags. task_tags references tasks by (id, created_at) because tasks
+            // is partitioned by created_at, so the creation time is taken from the task itself.
+            const string insertSql = @"
+                INSERT INTO task_tags (task_id, task_created_at, tag_id)
+                SELECT t.id, t.created_at, @TagId FROM tasks t WHERE t.id = @TaskId";
             
             foreach (var tagId in tagIds)
             {

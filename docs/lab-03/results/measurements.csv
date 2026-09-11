@@ -1,0 +1,47 @@
+part,query,variant,partitions_total,partitions_in_plan,partitions_executed,subplans_removed,scan,indexes,actual_rows,rows_removed,has_sort,operations,buffers,planning_ms,execution_ms
+1-2,count за 10 сентября,партиции по дням,3,1,1,0,Seq Scan,,499431,0,f,Aggregate → Gather → Seq Scan,4726,0.075,32.703
+1-2,count event_type = click,"партиции по дням, без индекса",3,3,3,0,Seq Scan,,30035,1469968,f,Aggregate → Gather → Append → Seq Scan,14195,0.098,42.090
+1-2,count за последние сутки от now(),партиции по дням,3,2,2,1,Seq Scan,,563815,436234,f,Aggregate → Gather → Append → Seq Scan,9464,0.097,83.580
+1-2,count за 10 сентября,обычная таблица,0,1,1,0,Seq Scan,,499431,1000572,f,Aggregate → Gather → Seq Scan,14208,0.051,50.221
+8,сутки + user_id,партиции + индекс user_id,3,1,1,0,Bitmap Heap Scan,events_*_user_id_idx,5,0,f,Bitmap Heap Scan → Bitmap Index Scan,8,0.050,0.057
+8,только user_id,партиции + индекс user_id,3,3,3,0,Bitmap Heap Scan,events_*_user_id_idx,16,0,f,Append → Bitmap Heap Scan → Bitmap Index Scan,25,0.040,0.117
+8,сутки + user_id,обычная таблица + индекс user_id,0,1,1,0,Bitmap Heap Scan,idx_events_flat_user_id,5,11,f,Bitmap Heap Scan → Bitmap Index Scan,19,0.025,0.049
+9,count event_type = click,"партиции, без индекса event_type",3,3,3,0,Seq Scan,,30035,1469968,f,Aggregate → Gather → Append → Seq Scan,14195,0.102,41.592
+9,count event_type = click,партиции + индекс event_type,3,3,3,0,Index Only Scan,events_*_event_type_idx,30035,0,f,Aggregate → Append → Index Only Scan,38,0.202,7.406
+9,count click за 10 сентября,партиции + индекс event_type,3,1,1,0,Bitmap Heap Scan,events_*_event_type_idx,10174,0,f,Aggregate → Bitmap Heap Scan → Bitmap Index Scan,4185,0.108,6.590
+3,price от 100 до 500,RANGE по цене,3,1,1,0,Seq Scan,,23945,30003,f,Seq Scan,448,0.094,7.314
+3,price от 50 до 150,RANGE по цене,3,2,2,0,Seq Scan,,6115,53757,f,Append → Seq Scan,498,0.119,6.735
+4,customer_type = B2B,LIST,3,1,1,0,Seq Scan,,75001,0,f,Seq Scan,601,0.138,12.543
+4,"customer_type IN (B2B, Enterprise)",LIST,3,2,2,0,Seq Scan,,90067,0,f,Append → Seq Scan,727,0.090,21.094
+5,customer_type = Premium,LIST + DEFAULT,5,1,1,0,Seq Scan,,0,0,f,Seq Scan,1,0.045,0.012
+6,user_id = 42,HASH по user_id,4,1,1,0,Seq Scan,,16,249212,f,Gather → Seq Scan,1899,0.073,27.511
+6,события старше 3 лет,HASH по user_id,4,4,4,0,Seq Scan,,27711,972288,f,Aggregate → Gather → Append → Seq Scan,7619,0.138,44.320
+18,id = 500000 (есть ключ),10 партиций,10,1,1,0,Seq Scan,,1,99999,f,Seq Scan,935,0.047,3.860
+18,id = 500000 (есть ключ),100 партиций,100,1,1,0,Seq Scan,,1,9999,f,Seq Scan,94,0.022,0.360
+18,id = 500000 (есть ключ),1000 партиций,1000,1,1,0,Seq Scan,,1,999,f,Seq Scan,10,0.052,0.047
+18,payload = ... (ключа нет),10 партиций,10,10,10,0,Seq Scan,,1,999998,f,Gather → Append → Seq Scan,9350,0.139,32.111
+18,payload = ... (ключа нет),100 партиций,100,100,100,0,Seq Scan,,1,999998,f,Gather → Append → Seq Scan,9400,0.642,36.123
+18,payload = ... (ключа нет),1000 партиций,1000,1000,1000,0,Seq Scan,,1,999998,f,Gather → Append → Seq Scan,10000,12.053,97.222
+12,"Q1 месяц, все задачи: COUNT",before,0,1,1,0,Index Only Scan,idx_tasks_created_at_due_date,207879,0,f,Aggregate → Gather → Index Only Scan,137572,0.134,36.604
+12,"Q2 месяц, все задачи: страница",before,0,1,1,0,Index Scan,idx_tasks_created_at_due_date,10,0,f,Limit → Index Scan,13,0.078,0.043
+12,Q3 неделя + статус: COUNT,before,0,1,1,0,Bitmap Heap Scan,"idx_tasks_created_at_due_date, idx_tasks_status",9844,0,f,Aggregate → Bitmap Heap Scan → BitmapAnd → Bitmap Index Scan,20982,0.170,297.047
+12,"Q4 месяц, задачи пользователя: COUNT",before,0,1,1,0,Index Only Scan,idx_tasks_user_id_created_at,2089,0,f,Aggregate → Index Only Scan,18,0.224,0.498
+12,"Q5 месяц, задачи пользователя: страница",before,0,1,1,0,Index Scan,idx_tasks_user_id_created_at,10,0,f,Limit → Index Scan,13,0.079,0.036
+12,Q6 без фильтров: страница,before,0,1,1,0,Index Scan,idx_tasks_created_at_due_date,10,0,f,Limit → Index Scan,13,0.043,0.056
+12,Q7 задача по id,before,0,1,1,0,Index Scan,tasks_pkey,1,0,f,Limit → Index Scan,4,0.028,0.024
+12,Q8 статистика по статусам,before,0,1,1,0,Seq Scan,,5000001,0,t,Aggregate → Gather Merge → Sort → Seq Scan,87919,0.089,409.813
+12,"Q1 месяц, все задачи: COUNT",after,29,1,1,0,Seq Scan,,207879,0,f,Aggregate → Gather → Seq Scan,3655,0.244,32.003
+12,"Q2 месяц, все задачи: страница",after,29,1,1,0,Index Scan,tasks_*_created_at_due_date_idx,10,0,f,Limit → Index Scan,13,0.141,0.035
+12,Q3 неделя + статус: COUNT,after,29,1,1,0,Bitmap Heap Scan,tasks_*_status_idx,9844,4009,f,Aggregate → Bitmap Heap Scan → Bitmap Index Scan,1217,0.324,3.791
+12,"Q4 месяц, задачи пользователя: COUNT",after,29,1,1,0,Index Only Scan,tasks_*_user_id_created_at_idx,2089,0,f,Aggregate → Index Only Scan,15,0.131,0.302
+12,"Q5 месяц, задачи пользователя: страница",after,29,1,1,0,Index Scan,tasks_*_user_id_created_at_idx,10,0,f,Limit → Index Scan,13,0.141,0.032
+12,Q6 без фильтров: страница,after,29,29,4,0,Index Scan,tasks_*_created_at_due_date_idx,10,0,f,Limit → Append → Index Scan,15,0.791,0.208
+12,Q7 задача по id,after,29,29,26,0,"Index Scan, Seq Scan",tasks_*_pkey,1,0,f,Limit → Append → Seq Scan → Index Scan,76,0.625,0.558
+12,Q8 статистика по статусам,after,29,29,29,0,Seq Scan,,5000001,0,t,Aggregate → Gather Merge → Sort → Append → Seq Scan,87933,0.722,593.264
+12,"A1 месяц, все задачи: COUNT",API (EF Core),30,1,1,0,Seq Scan,,207879,0,f,Aggregate → Gather → Seq Scan,3655,0.180,17.393
+12,"A1 месяц, все задачи: страница",API (EF Core),30,1,1,0,Index Scan,"pk_task_tags, tags_pkey, tasks_*_created_at_due_date_idx, users_pkey",10,0,t,Sort → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan,117,0.713,0.395
+12,A2 неделя + статус: COUNT,API (EF Core),30,1,1,0,Bitmap Heap Scan,tasks_*_status_idx,9844,4009,f,Aggregate → Bitmap Heap Scan → Bitmap Index Scan,1217,0.159,4.072
+12,"A3 месяц, задачи пользователя: страница",API (EF Core),30,1,1,0,Index Scan,"pk_task_tags, tags_pkey, tasks_*_user_id_created_at_idx",10,0,t,Sort → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Index Scan,81,0.510,0.372
+12,A4 задача по id,API (EF Core),30,30,26,0,"Index Scan, Seq Scan","pk_task_tags, projects_pkey, tags_pkey, tasks_*_pkey, users_pkey",1,0,t,Sort → Nested Loop → Limit → Append → Seq Scan → Index Scan,90,1.954,0.875
+12,A5 статистика по статусам,API (EF Core),30,30,30,0,Seq Scan,,5000001,0,t,Aggregate → Gather Merge → Sort → Append → Seq Scan,87933,0.950,603.797
+12,A6 без фильтров: страница,API (EF Core),30,30,5,0,Index Scan,"pk_task_tags, tags_pkey, tasks_*_created_at_due_date_idx, users_pkey",10,0,t,Sort → Nested Loop → Hash Join → Seq Scan → Hash → Limit → Append → Index Scan,112,1.218,0.713

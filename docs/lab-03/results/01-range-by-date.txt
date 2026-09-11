@@ -1,0 +1,280 @@
+SET
+=== Часть 1. Таблица events, партиции по дням
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+--- 1 500 000 событий за 3 дня: view 60 %, login 25 %, purchase 13 %, click 2 %
+Timing is on.
+INSERT 0 1500000
+Time: 2536.665 ms (00:02.537)
+Timing is off.
+VACUUM
+  partition_name   | count  
+-------------------+--------
+ events_2026_09_09 | 499953
+ events_2026_09_10 | 499429
+ events_2026_09_11 | 500618
+(3 rows)
+
+--- Вопросы 1–2: граничные значения
+INSERT 0 2
+  partition_name   |   id    |     created_at      
+-------------------+---------+---------------------
+ events_2026_09_10 | 2000001 | 2026-09-10 12:00:00
+ events_2026_09_11 | 2000002 | 2026-09-11 00:00:00
+(2 rows)
+
+--- Вопрос 3: запись за 2026-09-12 (партиции нет)
+                             try_sql                             
+-----------------------------------------------------------------
+ ОШИБКА [23514]: no partition of relation "events" found for row
+(1 row)
+
+--- Как PostgreSQL хранит границы партиций
+  partition_name   |                               bounds                               
+-------------------+--------------------------------------------------------------------
+ events_2026_09_09 | FOR VALUES FROM ('2026-09-09 00:00:00') TO ('2026-09-10 00:00:00')
+ events_2026_09_10 | FOR VALUES FROM ('2026-09-10 00:00:00') TO ('2026-09-11 00:00:00')
+ events_2026_09_11 | FOR VALUES FROM ('2026-09-11 00:00:00') TO ('2026-09-12 00:00:00')
+(3 rows)
+
+Output format is unaligned.
+=== Часть 2. Partition pruning
+--- count за 10 сентября | партиции по дням
+
+SELECT COUNT(*) FROM lab03.events WHERE created_at >= '2026-09-10' AND created_at < '2026-09-11'
+Finalize Aggregate  (cost=9367.78..9367.79 rows=1 width=8) (actual time=29.283..32.616 rows=1 loops=1)
+  Buffers: shared hit=4726
+  ->  Gather  (cost=9367.57..9367.78 rows=2 width=8) (actual time=29.083..32.606 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=4726
+        ->  Partial Aggregate  (cost=8367.57..8367.58 rows=1 width=8) (actual time=26.217..26.218 rows=1 loops=3)
+              Buffers: shared hit=4726
+              ->  Parallel Seq Scan on events_2026_09_10 events  (cost=0.00..7847.43 rows=208054 width=0) (actual time=0.011..18.385 rows=166477 loops=3)
+                    Filter: ((created_at >= '2026-09-10 00:00:00'::timestamp without time zone) AND (created_at < '2026-09-11 00:00:00'::timestamp without time zone))
+                    Buffers: shared hit=4726
+Planning Time: 0.075 ms
+Execution Time: 32.703 ms
+
+--- count event_type = click | партиции по дням, без индекса
+
+SELECT COUNT(*) FROM lab03.events WHERE event_type = 'click'
+Finalize Aggregate  (cost=23102.60..23102.61 rows=1 width=8) (actual time=37.997..42.032 rows=1 loops=1)
+  Buffers: shared hit=14195
+  ->  Gather  (cost=23102.39..23102.60 rows=2 width=8) (actual time=37.798..42.024 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=14195
+        ->  Partial Aggregate  (cost=22102.39..22102.40 rows=1 width=8) (actual time=34.123..34.125 rows=1 loops=3)
+              Buffers: shared hit=14195
+              ->  Parallel Append  (cost=0.00..22070.76 rows=12652 width=0) (actual time=0.020..33.570 rows=10012 loops=3)
+                    Buffers: shared hit=14195
+                    ->  Parallel Seq Scan on events_2026_09_11 events_3  (cost=0.00..7345.39 rows=4213 width=0) (actual time=0.013..11.993 rows=3289 loops=3)
+                          Filter: ((event_type)::text = 'click'::text)
+                          Rows Removed by Filter: 163584
+                          Buffers: shared hit=4738
+                    ->  Parallel Seq Scan on events_2026_09_09 events_1  (cost=0.00..7334.92 rows=4007 width=0) (actual time=0.016..16.164 rows=4997 loops=2)
+                          Filter: ((event_type)::text = 'click'::text)
+                          Rows Removed by Filter: 244980
+                          Buffers: shared hit=4731
+                    ->  Parallel Seq Scan on events_2026_09_10 events_2  (cost=0.00..7327.19 rows=4432 width=0) (actual time=0.013..30.349 rows=10174 loops=1)
+                          Filter: ((event_type)::text = 'click'::text)
+                          Rows Removed by Filter: 489256
+                          Buffers: shared hit=4726
+Planning Time: 0.098 ms
+Execution Time: 42.090 ms
+
+--- дополнительно: граница вычисляется при выполнении (now()) — отсечение на старте исполнения
+--- count за последние сутки от now() | партиции по дням
+
+SELECT COUNT(*) FROM lab03.events WHERE created_at >= now()::timestamp - INTERVAL '1 day'
+Finalize Aggregate  (cost=29459.58..29459.58 rows=1 width=8) (actual time=80.027..83.514 rows=1 loops=1)
+  Buffers: shared hit=9464
+  ->  Gather  (cost=29459.36..29459.57 rows=2 width=8) (actual time=79.855..83.507 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=9464
+        ->  Partial Aggregate  (cost=28459.36..28459.37 rows=1 width=8) (actual time=76.771..76.772 rows=1 loops=3)
+              Buffers: shared hit=9464
+              ->  Parallel Append  (cost=0.00..27871.24 rows=235248 width=0) (actual time=0.012..68.215 rows=187938 loops=3)
+                    Buffers: shared hit=9464
+                    Subplans Removed: 1
+                    ->  Parallel Seq Scan on events_2026_09_11 events_2  (cost=0.00..8909.82 rows=208570 width=0) (actual time=0.008..32.132 rows=166873 loops=3)
+                          Filter: (created_at >= ((now())::timestamp without time zone - '1 day'::interval))
+                          Buffers: shared hit=4738
+                    ->  Parallel Seq Scan on events_2026_09_10 events_1  (cost=0.00..8887.91 rows=26657 width=0) (actual time=0.013..36.510 rows=31598 loops=2)
+                          Filter: (created_at >= ((now())::timestamp without time zone - '1 day'::interval))
+                          Rows Removed by Filter: 218117
+                          Buffers: shared hit=4726
+Planning Time: 0.097 ms
+Execution Time: 83.580 ms
+
+--- для сравнения: та же выборка из обычной таблицы без партиций
+Output format is aligned.
+SELECT 1500002
+VACUUM
+Output format is unaligned.
+--- count за 10 сентября | обычная таблица
+
+SELECT COUNT(*) FROM lab03.events_flat WHERE created_at >= '2026-09-10' AND created_at < '2026-09-11'
+Finalize Aggregate  (cost=25107.96..25107.97 rows=1 width=8) (actual time=47.604..50.178 rows=1 loops=1)
+  Buffers: shared hit=1954 read=12254 written=90
+  ->  Gather  (cost=25107.74..25107.95 rows=2 width=8) (actual time=47.424..50.170 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=1954 read=12254 written=90
+        ->  Partial Aggregate  (cost=24107.74..24107.75 rows=1 width=8) (actual time=44.484..44.486 rows=1 loops=3)
+              Buffers: shared hit=1954 read=12254 written=90
+              ->  Parallel Seq Scan on events_flat  (cost=0.00..23583.01 rows=209892 width=0) (actual time=10.402..37.142 rows=166477 loops=3)
+                    Filter: ((created_at >= '2026-09-10 00:00:00'::timestamp without time zone) AND (created_at < '2026-09-11 00:00:00'::timestamp without time zone))
+                    Rows Removed by Filter: 333524
+                    Buffers: shared hit=1954 read=12254 written=90
+Planning Time: 0.051 ms
+Execution Time: 50.221 ms
+
+=== Часть 8. Партиционирование и индексы
+Output format is aligned.
+CREATE INDEX
+ANALYZE
+--- индекс создан на родителе, PostgreSQL создал по индексу в каждой партиции
+        partition_index        |  size   
+-------------------------------+---------
+ events_2026_09_09_user_id_idx | 5784 kB
+ events_2026_09_10_user_id_idx | 5776 kB
+ events_2026_09_11_user_id_idx | 5784 kB
+(3 rows)
+
+Output format is unaligned.
+--- сутки + user_id | партиции + индекс user_id
+
+SELECT * FROM lab03.events WHERE created_at >= '2026-09-10' AND created_at < '2026-09-11' AND user_id = 12345
+Bitmap Heap Scan on events_2026_09_10 events  (cost=4.47..27.93 rows=6 width=45) (actual time=0.018..0.021 rows=5 loops=1)
+  Recheck Cond: (user_id = 12345)
+  Filter: ((created_at >= '2026-09-10 00:00:00'::timestamp without time zone) AND (created_at < '2026-09-11 00:00:00'::timestamp without time zone))
+  Heap Blocks: exact=5
+  Buffers: shared hit=8
+  ->  Bitmap Index Scan on events_2026_09_10_user_id_idx  (cost=0.00..4.47 rows=6 width=0) (actual time=0.015..0.015 rows=5 loops=1)
+        Index Cond: (user_id = 12345)
+        Buffers: shared hit=3
+Planning Time: 0.050 ms
+Execution Time: 0.057 ms
+
+--- только user_id | партиции + индекс user_id
+
+SELECT * FROM lab03.events WHERE user_id = 12345
+Append  (cost=4.47..83.80 rows=18 width=45) (actual time=0.011..0.044 rows=16 loops=1)
+  Buffers: shared hit=25
+  ->  Bitmap Heap Scan on events_2026_09_09 events_1  (cost=4.47..27.90 rows=6 width=45) (actual time=0.011..0.013 rows=4 loops=1)
+        Recheck Cond: (user_id = 12345)
+        Heap Blocks: exact=4
+        Buffers: shared hit=7
+        ->  Bitmap Index Scan on events_2026_09_09_user_id_idx  (cost=0.00..4.47 rows=6 width=0) (actual time=0.009..0.009 rows=4 loops=1)
+              Index Cond: (user_id = 12345)
+              Buffers: shared hit=3
+  ->  Bitmap Heap Scan on events_2026_09_10 events_2  (cost=4.47..27.90 rows=6 width=45) (actual time=0.010..0.013 rows=5 loops=1)
+        Recheck Cond: (user_id = 12345)
+        Heap Blocks: exact=5
+        Buffers: shared hit=8
+        ->  Bitmap Index Scan on events_2026_09_10_user_id_idx  (cost=0.00..4.47 rows=6 width=0) (actual time=0.009..0.009 rows=5 loops=1)
+              Index Cond: (user_id = 12345)
+              Buffers: shared hit=3
+  ->  Bitmap Heap Scan on events_2026_09_11 events_3  (cost=4.47..27.90 rows=6 width=45) (actual time=0.012..0.015 rows=7 loops=1)
+        Recheck Cond: (user_id = 12345)
+        Heap Blocks: exact=7
+        Buffers: shared hit=10
+        ->  Bitmap Index Scan on events_2026_09_11_user_id_idx  (cost=0.00..4.47 rows=6 width=0) (actual time=0.011..0.011 rows=7 loops=1)
+              Index Cond: (user_id = 12345)
+              Buffers: shared hit=3
+Planning Time: 0.040 ms
+Execution Time: 0.117 ms
+
+--- для сравнения: обычная таблица с тем же индексом
+CREATE INDEX
+ANALYZE
+--- сутки + user_id | обычная таблица + индекс user_id
+
+SELECT * FROM lab03.events_flat WHERE created_at >= '2026-09-10' AND created_at < '2026-09-11' AND user_id = 12345
+Bitmap Heap Scan on events_flat  (cost=4.55..67.22 rows=5 width=45) (actual time=0.015..0.020 rows=5 loops=1)
+  Recheck Cond: (user_id = 12345)
+  Filter: ((created_at >= '2026-09-10 00:00:00'::timestamp without time zone) AND (created_at < '2026-09-11 00:00:00'::timestamp without time zone))
+  Rows Removed by Filter: 11
+  Heap Blocks: exact=16
+  Buffers: shared hit=19
+  ->  Bitmap Index Scan on idx_events_flat_user_id  (cost=0.00..4.55 rows=16 width=0) (actual time=0.009..0.009 rows=16 loops=1)
+        Index Cond: (user_id = 12345)
+        Buffers: shared hit=3
+Planning Time: 0.025 ms
+Execution Time: 0.049 ms
+
+=== Часть 9. Когда партиционирование не помогает: event_type = click
+--- count event_type = click | партиции, без индекса event_type
+
+SELECT COUNT(*) FROM lab03.events WHERE event_type = 'click'
+Finalize Aggregate  (cost=23103.10..23103.11 rows=1 width=8) (actual time=37.743..41.530 rows=1 loops=1)
+  Buffers: shared hit=14119 read=76
+  ->  Gather  (cost=23102.88..23103.09 rows=2 width=8) (actual time=37.561..41.523 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=14119 read=76
+        ->  Partial Aggregate  (cost=22102.88..22102.89 rows=1 width=8) (actual time=34.474..34.476 rows=1 loops=3)
+              Buffers: shared hit=14119 read=76
+              ->  Parallel Append  (cost=0.00..22071.09 rows=12716 width=0) (actual time=0.143..33.914 rows=10012 loops=3)
+                    Buffers: shared hit=14119 read=76
+                    ->  Parallel Seq Scan on events_2026_09_11 events_3  (cost=0.00..7345.39 rows=4228 width=0) (actual time=0.254..12.870 rows=3289 loops=3)
+                          Filter: ((event_type)::text = 'click'::text)
+                          Rows Removed by Filter: 163584
+                          Buffers: shared hit=4731 read=7
+                    ->  Parallel Seq Scan on events_2026_09_09 events_1  (cost=0.00..7334.92 rows=4250 width=0) (actual time=0.027..16.559 rows=4997 loops=2)
+                          Filter: ((event_type)::text = 'click'::text)
+                          Rows Removed by Filter: 244980
+                          Buffers: shared hit=4662 read=69
+                    ->  Parallel Seq Scan on events_2026_09_10 events_2  (cost=0.00..7327.20 rows=4238 width=0) (actual time=0.013..27.715 rows=10174 loops=1)
+                          Filter: ((event_type)::text = 'click'::text)
+                          Rows Removed by Filter: 489256
+                          Buffers: shared hit=4726
+Planning Time: 0.102 ms
+Execution Time: 41.592 ms
+
+CREATE INDEX
+ANALYZE
+--- count event_type = click | партиции + индекс event_type
+
+SELECT COUNT(*) FROM lab03.events WHERE event_type = 'click'
+Aggregate  (cost=874.09..874.10 rows=1 width=8) (actual time=7.265..7.270 rows=1 loops=1)
+  Buffers: shared hit=38
+  ->  Append  (cost=0.42..799.05 rows=30015 width=0) (actual time=0.048..5.569 rows=30035 loops=1)
+        Buffers: shared hit=38
+        ->  Index Only Scan using events_2026_09_09_event_type_idx on events_2026_09_09 events_1  (cost=0.42..207.61 rows=9782 width=0) (actual time=0.048..0.884 rows=9994 loops=1)
+              Index Cond: (event_type = 'click'::text)
+              Heap Fetches: 0
+              Buffers: shared hit=12
+        ->  Index Only Scan using events_2026_09_10_event_type_idx on events_2026_09_10 events_2  (cost=0.42..226.32 rows=10438 width=0) (actual time=0.092..1.156 rows=10174 loops=1)
+              Index Cond: (event_type = 'click'::text)
+              Heap Fetches: 3
+              Buffers: shared hit=13
+        ->  Index Only Scan using events_2026_09_11_event_type_idx on events_2026_09_11 events_3  (cost=0.42..215.05 rows=9795 width=0) (actual time=0.095..0.911 rows=9867 loops=1)
+              Index Cond: (event_type = 'click'::text)
+              Heap Fetches: 5
+              Buffers: shared hit=13
+Planning Time: 0.202 ms
+Execution Time: 7.406 ms
+
+--- count click за 10 сентября | партиции + индекс event_type
+
+SELECT COUNT(*) FROM lab03.events WHERE event_type = 'click' AND created_at >= '2026-09-10' AND created_at < '2026-09-11'
+Aggregate  (cost=5052.07..5052.08 rows=1 width=8) (actual time=6.481..6.483 rows=1 loops=1)
+  Buffers: shared hit=4185
+  ->  Bitmap Heap Scan on events_2026_09_10 events  (cost=117.32..5025.98 rows=10436 width=0) (actual time=1.542..6.010 rows=10174 loops=1)
+        Recheck Cond: ((event_type)::text = 'click'::text)
+        Filter: ((created_at >= '2026-09-10 00:00:00'::timestamp without time zone) AND (created_at < '2026-09-11 00:00:00'::timestamp without time zone))
+        Heap Blocks: exact=4174
+        Buffers: shared hit=4185
+        ->  Bitmap Index Scan on events_2026_09_10_event_type_idx  (cost=0.00..114.71 rows=10438 width=0) (actual time=0.827..0.828 rows=10174 loops=1)
+              Index Cond: ((event_type)::text = 'click'::text)
+              Buffers: shared hit=11
+Planning Time: 0.108 ms
+Execution Time: 6.590 ms
+
+DROP TABLE

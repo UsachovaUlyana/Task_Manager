@@ -31,6 +31,17 @@ public class TaskFilterRequest
     public DateTime? DueDateTo { get; set; }
 
     /// <summary>
+    /// Gets or sets the minimum creation date filter. The tasks table is partitioned by created_at,
+    /// so this filter lets PostgreSQL read only the partitions of the requested period.
+    /// </summary>
+    public DateTime? CreatedFrom { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum creation date filter (inclusive).
+    /// </summary>
+    public DateTime? CreatedTo { get; set; }
+
+    /// <summary>
     /// Gets or sets the sort order: created_at, due_date, priority or title;
     /// prefix with "-" for descending order. Defaults to -created_at (newest first).
     /// </summary>

@@ -123,11 +123,15 @@ TaskManager/
 │
 ├── scripts/
 │   ├── generate-data.sql             # Массовая генерация тестовых данных
-│   └── lab-01/                       # Скрипты экспериментов ЛР №1 (индексы)
+│   ├── lab-01/                       # Скрипты экспериментов ЛР №1 (индексы)
+│   ├── lab-02/                       # Скрипты экспериментов ЛР №2 (рост данных)
+│   └── lab-03/                       # Скрипты экспериментов ЛР №3 (партиционирование)
 │
 ├── docs/
 │   ├── lab-01-indexes.md             # Отчёт по ЛР №1
-│   └── lab-01/results/               # Сырые результаты EXPLAIN ANALYZE
+│   ├── lab-02-growth.md              # Отчёт по ЛР №2
+│   ├── lab-03-partitioning.md        # Отчёт по ЛР №3
+│   └── lab-0N/results/               # Сырые результаты EXPLAIN ANALYZE
 │
 ├── Dockerfile                        # Образ API
 └── docker-compose.yml                # Весь проект в Docker
@@ -557,6 +561,32 @@ RESET=1 bash scripts/lab-02/run-part-b.sh    # часть B: tasks 100 тыс. �
 vhs scripts/lab-02/demo.tape                 # запись терминала (нужны vhs, ttyd, ffmpeg)
 ```
 
+## Партиционирование (ЛР №3)
+
+Отчёт — [docs/lab-03-partitioning.md](docs/lab-03-partitioning.md); он же по ГОСТ 7.32-2017 — [docs/lab-03-report.docx](docs/lab-03-report.docx) ([PDF](docs/lab-03-report.pdf)).
+
+![Запись терминала: сбой ночной задачи партиций, alert в Telegram, восстановление и recovery](docs/lab-03/demo.gif)
+
+| Изменение | Зачем |
+|---|---|
+| Миграция `012-partition-tasks-by-created-at.xml`: `tasks` → RANGE-партиции по месяцу `created_at`, первичный ключ `(id, created_at)`, в `task_tags` колонка `task_created_at` и составной внешний ключ | запросы за период читают 1 партицию из 30: неделя + статус на 5 млн задач 297 ms → 3.8 ms |
+| Фильтр `createdFrom` / `createdTo` в `GET /api/tasks` | запрос по ключу партиционирования |
+| `PartitionMaintenanceWorker`: job создаёт партиции на горизонт + 1 период при старте и в 01:00 UTC, проверка — каждые 5 минут | партиции для новых данных всегда есть |
+| `GET /api/partitions`, `POST /api/partitions/ensure`, `POST /api/partitions/check` (Admin), `GET /health/partitions` | состояние, ручной запуск job и проверки, мониторинг |
+| Alert в Telegram и миграция `013` (таблица `partition_alert_state`) | один alert на проблему и recovery после исправления |
+
+Таблицы и горизонт — секция `Partitioning` в `appsettings.json`. Для alert в Telegram скопируйте `.env.example` в `.env` и укажите `TELEGRAM_BOT_TOKEN` (от @BotFather) и `TELEGRAM_CHAT_ID`, затем `docker compose up -d`. Файл `.env` в `.gitignore`; без него alert только пишется в лог API.
+
+Повторить эксперименты:
+
+```bash
+bash scripts/lab-03/run-sql-part.sh                    # части 1–9: RANGE, LIST, HASH на таблицах схемы lab03
+bash scripts/lab-03/run-service-part.sh before         # часть 12: запросы к tasks до миграции 012
+bash scripts/lab-03/run-service-part.sh after          # … и после неё (+ EXPLAIN реальных запросов API)
+powershell -File scripts/lab-03/demo-alert.ps1         # части 10–11: сбой, alert, восстановление, recovery
+vhs scripts/lab-03/demo.tape                           # запись терминала
+```
+
 ---
 
 ## Аутентификация и авторизация
@@ -671,6 +701,12 @@ GET /health
 - PostgreSQL — подключение к базе данных
 - Redis — подключение к кэшу
 
+```http
+GET /health/partitions
+```
+
+Есть ли партиции `tasks` и `lab03.events` на текущий период и 3 вперёд (ЛР №3): `200 Healthy` или `503 Unhealthy` со списком отсутствующих. В общий `/health` не входит.
+
 ---
 
 ## Тестирование
@@ -692,6 +728,8 @@ dotnet test
 | TaskRepository | 12 тестов (CRUD, фильтрация, пагинация) |
 | ProjectRepository | 12 тестов (CRUD, GetByUserId, IsUserMember) |
 | TagRepository | 12 тестов (CRUD, GetByName, GetByIds) |
+
+Логику партиций (ЛР №3) проверяют тесты в `tests/TaskManager.Tests/Partitioning`: планировщик партиций, разбор границ из `pg_get_expr`, политика алертов и сервис целиком на подменённых часах. Всего в проекте 93 теста.
 
 ---
 
@@ -723,6 +761,8 @@ dotnet test
 | `ConnectionStrings__DefaultConnection` | Строка подключения к PostgreSQL |
 | `ConnectionStrings__Redis` | Строка подключения к Redis |
 | `Jwt__Key` | Секретный ключ для JWT |
+| `Alerts__Telegram__BotToken` | Токен Telegram-бота для alert о партициях; в Docker — `TELEGRAM_BOT_TOKEN` из `.env` |
+| `Alerts__Telegram__ChatId` | Чат для alert; в Docker — `TELEGRAM_CHAT_ID` из `.env` |
 
 ---
 

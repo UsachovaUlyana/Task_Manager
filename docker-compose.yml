@@ -69,6 +69,9 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=taskmanager_db;Username=taskmanager;Password=taskmanager_password
       ConnectionStrings__Redis: redis:6379
+      # Алерты о партициях (ЛР №3): токен и чат берутся из локального .env, он не коммитится
+      Alerts__Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
+      Alerts__Telegram__ChatId: ${TELEGRAM_CHAT_ID:-}
     ports:
       - "5000:8080"
     networks:

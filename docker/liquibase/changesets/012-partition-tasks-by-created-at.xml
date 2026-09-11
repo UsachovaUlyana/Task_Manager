@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        ЛР №3 (docs/lab-03-partitioning.md, часть 12): tasks → RANGE-партиции по created_at, по месяцу.
+
+        Ограничения PostgreSQL, которые определяют форму миграции:
+          - первичный ключ партиционированной таблицы обязан включать ключ партиционирования:
+            tasks_pkey = (id, created_at);
+          - внешний ключ может ссылаться только на уникальный ключ целиком, поэтому task_tags
+            хранит task_created_at и ссылается на tasks (id, created_at).
+
+        Партиции создаются от самого раннего месяца с данными (не позже чем за 25 месяцев —
+        столько покрывает генератор тестовых данных) до текущего месяца + 3 вперёд.
+        Дальше будущие партиции создаёт фоновая задача сервиса (PartitionMaintenanceWorker).
+    -->
+    <changeSet id="012-partition-tasks-by-created-at" author="taskmanager">
+        <sql>ALTER TABLE task_tags DROP CONSTRAINT fk_task_tags_task_id</sql>
+        <sql>ALTER TABLE tasks RENAME TO tasks_unpartitioned</sql>
+        <sql>CREATE TABLE tasks (LIKE tasks_unpartitioned INCLUDING DEFAULTS) PARTITION BY RANGE (created_at)</sql>
+
+        <sql splitStatements="false">
+DO $$
+DECLARE
+    first_month TIMESTAMPTZ;
+    last_month TIMESTAMPTZ;
+    m TIMESTAMPTZ;
+BEGIN
+    PERFORM set_config('TimeZone', 'UTC', true);
+    first_month := date_trunc('month', LEAST(
+        COALESCE((SELECT min(created_at) FROM tasks_unpartitioned), now()),
+        now() - INTERVAL '25 months'));
+    last_month := date_trunc('month', now()) + INTERVAL '3 months';
+    m := first_month;
+    WHILE m &lt;= last_month LOOP
+        EXECUTE format('CREATE TABLE %I PARTITION OF tasks FOR VALUES FROM (%L) TO (%L)',
+                       'tasks_' || to_char(m, 'YYYY_MM'), m, m + INTERVAL '1 month');
+        m := m + INTERVAL '1 month';
+    END LOOP;
+END $$
+        </sql>
+
+        <!-- данные переносятся до создания индексов: так вставка быстрее -->
+        <sql>INSERT INTO tasks SELECT * FROM tasks_unpartitioned</sql>
+        <sql>DROP TABLE tasks_unpartitioned</sql>
+
+        <sql>ALTER TABLE tasks ADD CONSTRAINT tasks_pkey PRIMARY KEY (id, created_at)</sql>
+        <sql>ALTER TABLE tasks ADD CONSTRAINT fk_tasks_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE</sql>
+        <sql>ALTER TABLE tasks ADD CONSTRAINT fk_tasks_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE SET NULL</sql>
+        <sql>CREATE INDEX idx_tasks_user_id_created_at ON tasks (user_id, created_at DESC)</sql>
+        <sql>CREATE INDEX idx_tasks_created_at_due_date ON tasks (created_at DESC, due_date)</sql>
+        <sql>CREATE INDEX idx_tasks_project_id ON tasks (project_id)</sql>
+        <sql>CREATE INDEX idx_tasks_status ON tasks (status)</sql>
+        <sql>CREATE INDEX idx_tasks_priority ON tasks (priority)</sql>
+        <sql>CREATE INDEX idx_tasks_due_date ON tasks (due_date)</sql>
+
+        <sql>ALTER TABLE task_tags ADD COLUMN task_created_at TIMESTAMPTZ</sql>
+        <sql>UPDATE task_tags tt SET task_created_at = t.created_at FROM tasks t WHERE t.id = tt.task_id</sql>
+        <sql>DELETE FROM task_tags WHERE task_created_at IS NULL</sql>
+        <sql>ALTER TABLE task_tags ALTER COLUMN task_created_at SET NOT NULL</sql>
+        <sql>ALTER TABLE task_tags ADD CONSTRAINT fk_task_tags_task FOREIGN KEY (task_id, task_created_at) REFERENCES tasks (id, created_at) ON DELETE CASCADE</sql>
+        <sql>ANALYZE tasks</sql>
+        <sql>ANALYZE task_tags</sql>
+
+        <rollback>
+            <sql>ALTER TABLE task_tags DROP CONSTRAINT fk_task_tags_task</sql>
+            <sql>ALTER TABLE task_tags DROP COLUMN task_created_at</sql>
+            <sql>ALTER TABLE tasks RENAME TO tasks_partitioned</sql>
+            <sql>CREATE TABLE tasks (LIKE tasks_partitioned INCLUDING DEFAULTS)</sql>
+            <sql>INSERT INTO tasks SELECT * FROM tasks_partitioned</sql>
+            <sql>DROP TABLE tasks_partitioned</sql>
+            <sql>ALTER TABLE tasks ADD CONSTRAINT tasks_pkey PRIMARY KEY (id)</sql>
+            <sql>ALTER TABLE tasks ADD CONSTRAINT fk_tasks_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE</sql>
+            <sql>ALTER TABLE tasks ADD CONSTRAINT fk_tasks_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE SET NULL</sql>
+            <sql>CREATE INDEX idx_tasks_user_id_created_at ON tasks (user_id, created_at DESC)</sql>
+            <sql>CREATE INDEX idx_tasks_created_at_due_date ON tasks (created_at DESC, due_date)</sql>
+            <sql>CREATE INDEX idx_tasks_project_id ON tasks (project_id)</sql>
+            <sql>CREATE INDEX idx_tasks_status ON tasks (status)</sql>
+            <sql>CREATE INDEX idx_tasks_priority ON tasks (priority)</sql>
+            <sql>CREATE INDEX idx_tasks_due_date ON tasks (due_date)</sql>
+            <sql>ALTER TABLE task_tags ADD CONSTRAINT fk_task_tags_task_id FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

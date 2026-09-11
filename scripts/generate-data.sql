@@ -105,7 +105,7 @@ ON CONFLICT DO NOTHING;
 -- status:   Pending 20%, InProgress 20%, Completed 55%, Cancelled 5%
 -- priority: Low 30%, Medium 40%, High 22%, Critical 8%
 -- power(random(), 2) смещает выбор к пользователям с малыми номерами
-CREATE TEMP TABLE new_tasks (id uuid) ON COMMIT DROP;
+CREATE TEMP TABLE new_tasks (id uuid, created_at timestamptz) ON COMMIT DROP;
 WITH inserted AS (
 INSERT INTO tasks (id, title, description, status, priority, due_date,
                    user_id, project_id, created_at, updated_at)
@@ -138,15 +138,16 @@ FROM (
 ) s
 JOIN gen_users u ON u.n = s.un
 LEFT JOIN gen_projects p ON p.n = s.pn
-RETURNING id
+RETURNING id, created_at
 )
-INSERT INTO new_tasks SELECT id FROM inserted;
+INSERT INTO new_tasks SELECT id, created_at FROM inserted;
 
 \echo '>>> task_tags (M:M): у ~64% новых задач 1-2 тега'
-INSERT INTO task_tags (task_id, tag_id)
-SELECT s.task_id, t.id
+-- task_created_at: tasks партиционирована по created_at, внешний ключ — (task_id, task_created_at)
+INSERT INTO task_tags (task_id, task_created_at, tag_id)
+SELECT s.task_id, s.task_created_at, t.id
 FROM (
-    SELECT nt.id AS task_id, 1 + floor(random() * :gen_tags_count)::int AS tn
+    SELECT nt.id AS task_id, nt.created_at AS task_created_at, 1 + floor(random() * :gen_tags_count)::int AS tn
     FROM new_tasks nt, generate_series(1, 2) k
     WHERE random() < 0.4
 ) s

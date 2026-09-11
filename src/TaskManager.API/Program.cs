@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using AspNetCoreRateLimit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -10,8 +11,10 @@ using Serilog;
 using Serilog.Events;
 using StackExchange.Redis;
 using TaskManager.API.Auth;
+using TaskManager.API.Background;
 using TaskManager.API.Middleware;
 using TaskManager.Application.Interfaces;
+using TaskManager.Application.Partitioning;
 using TaskManager.Application.Services;
 using TaskManager.Infrastructure.Data;
 using TaskManager.Infrastructure.Repositories;
@@ -188,7 +191,8 @@ builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>()
 // Configure Health Checks
 builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection")!, name: "postgresql")
-    .AddRedis(builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379", name: "redis");
+    .AddRedis(builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379", name: "redis")
+    .AddCheck<PartitionsHealthCheck>("partitions", tags: new[] { "partitions" });
 
 // Register Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -207,6 +211,18 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
+
+// Partition maintenance: nightly job, health check and alerts
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection(PartitioningOptions.SectionName).Get<PartitioningOptions>() ?? new PartitioningOptions());
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection(TelegramOptions.SectionName).Get<TelegramOptions>() ?? new TelegramOptions());
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IPartitionRepository, PartitionRepository>();
+builder.Services.AddScoped<IPartitionMaintenanceService, PartitionMaintenanceService>();
+// The bot token is part of the request URL, so HttpClient must not log requests of this client
+builder.Services.AddHttpClient<IAlertNotifier, TelegramAlertNotifier>().RemoveAllLoggers();
+builder.Services.AddHostedService<PartitionMaintenanceWorker>();
 
 var app = builder.Build();
 
@@ -240,7 +256,26 @@ app.UseAuthorization();
 // Map endpoints
 app.MapControllers();
 app.MapMetrics(); // Prometheus /metrics endpoint
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    // A missing partition is reported by /health/partitions and does not make the service itself unhealthy
+    Predicate = check => !check.Tags.Contains("partitions")
+});
+app.MapHealthChecks("/health/partitions", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("partitions"),
+    ResponseWriter = (context, report) => context.Response.WriteAsJsonAsync(new
+    {
+        status = report.Status.ToString(),
+        checks = report.Entries.Select(e => new
+        {
+            name = e.Key,
+            status = e.Value.Status.ToString(),
+            description = e.Value.Description,
+            data = e.Value.Data
+        })
+    })
+});
 
 // Log startup
 Log.Information("Task Manager API started on {Urls}", string.Join(", ", app.Urls));

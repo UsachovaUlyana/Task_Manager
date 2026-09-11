@@ -1,0 +1,395 @@
+SET
+DELETE 0
+=== Таблица tasks ( after )
+ partitions 
+------------
+         29
+(1 row)
+
+ total_size 
+------------
+ 1414 MB
+(1 row)
+
+ partition_name |  rows  
+----------------+--------
+ tasks_2024_09  | 139655
+ tasks_2024_10  | 208369
+ tasks_2024_11  | 208635
+ tasks_2024_12  | 208751
+ tasks_2025_01  | 208198
+ tasks_2025_02  | 208583
+ tasks_2025_03  | 208100
+ tasks_2025_04  | 208771
+ tasks_2025_05  | 208364
+ tasks_2025_06  | 208384
+ tasks_2025_07  | 208591
+ tasks_2025_08  | 208058
+ tasks_2025_09  | 208372
+ tasks_2025_10  | 207735
+ tasks_2025_11  | 208001
+ tasks_2025_12  | 208673
+ tasks_2026_01  | 207755
+ tasks_2026_02  | 208322
+ tasks_2026_03  | 208102
+ tasks_2026_04  | 208918
+ tasks_2026_05  | 208336
+ tasks_2026_06  | 208758
+ tasks_2026_07  | 208188
+ tasks_2026_08  | 207879
+ tasks_2026_09  |  68502
+(25 rows)
+
+user_id = 335fc496-f143-433c-b8b5-48277f10419e , task_id = 12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd
+Output format is unaligned.
+=== Q1. GET /api/tasks?createdFrom=2026-08-01&createdTo=2026-08-31T23:59:59 (Admin): COUNT
+--- Q1 месяц, все задачи: COUNT | after
+
+SELECT count(*)::int FROM tasks AS t
+WHERE t.created_at >= '2026-08-01 00:00:00+00' AND t.created_at <= '2026-08-31 23:59:59+00'
+Finalize Aggregate  (cost=6171.00..6171.01 rows=1 width=4) (actual time=26.230..31.972 rows=1 loops=1)
+  Buffers: shared hit=3655
+  ->  Gather  (cost=6170.78..6170.99 rows=2 width=8) (actual time=26.099..31.964 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=3655
+        ->  Partial Aggregate  (cost=5170.78..5170.79 rows=1 width=8) (actual time=12.214..12.215 rows=1 loops=3)
+              Buffers: shared hit=3655
+              ->  Parallel Seq Scan on tasks_2026_08 t  (cost=0.00..4954.24 rows=86616 width=0) (actual time=0.006..9.100 rows=69293 loops=3)
+                    Filter: ((created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-08-31 23:59:59+00'::timestamp with time zone))
+                    Buffers: shared hit=3655
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.244 ms
+Execution Time: 32.003 ms
+
+=== Q2. Тот же запрос: первая страница
+--- Q2 месяц, все задачи: страница | after
+
+SELECT t.id, t.title, t.status, t.priority, t.due_date, t.user_id, t.project_id, t.created_at
+FROM tasks AS t
+WHERE t.created_at >= '2026-08-01 00:00:00+00' AND t.created_at <= '2026-08-31 23:59:59+00'
+ORDER BY t.created_at DESC
+LIMIT 10
+Limit  (cost=0.42..1.48 rows=10 width=85) (actual time=0.015..0.020 rows=10 loops=1)
+  Buffers: shared hit=13
+  ->  Index Scan using tasks_2026_08_created_at_due_date_idx on tasks_2026_08 t  (cost=0.42..21985.47 rows=207879 width=85) (actual time=0.014..0.018 rows=10 loops=1)
+        Index Cond: ((created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-08-31 23:59:59+00'::timestamp with time zone))
+        Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.141 ms
+Execution Time: 0.035 ms
+
+=== Q3. GET /api/tasks?status=Pending&createdFrom=2026-09-01&createdTo=2026-09-07T23:59:59 (Admin): COUNT
+--- Q3 неделя + статус: COUNT | after
+
+SELECT count(*)::int FROM tasks AS t
+WHERE t.status = 0
+  AND t.created_at >= '2026-09-01 00:00:00+00' AND t.created_at <= '2026-09-07 23:59:59+00'
+Aggregate  (cost=1629.78..1629.79 rows=1 width=4) (actual time=3.726..3.728 rows=1 loops=1)
+  Buffers: shared hit=1217
+  ->  Bitmap Heap Scan on tasks_2026_09 t  (cost=158.69..1605.20 rows=9830 width=0) (actual time=0.504..3.238 rows=9844 loops=1)
+        Recheck Cond: (status = 0)
+        Filter: ((created_at >= '2026-09-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-09-07 23:59:59+00'::timestamp with time zone))
+        Rows Removed by Filter: 4009
+        Heap Blocks: exact=1204
+        Buffers: shared hit=1217
+        ->  Bitmap Index Scan on tasks_2026_09_status_idx  (cost=0.00..156.23 rows=13858 width=0) (actual time=0.375..0.376 rows=13853 loops=1)
+              Index Cond: (status = 0)
+              Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.324 ms
+Execution Time: 3.791 ms
+
+=== Q4. GET /api/tasks?createdFrom=2026-08-01&createdTo=2026-08-31T23:59:59 (пользователь): COUNT
+--- Q4 месяц, задачи пользователя: COUNT | after
+
+SELECT count(*)::int FROM tasks AS t
+WHERE t.user_id = '335fc496-f143-433c-b8b5-48277f10419e'
+  AND t.created_at >= '2026-08-01 00:00:00+00' AND t.created_at <= '2026-08-31 23:59:59+00'
+Aggregate  (cost=97.59..97.61 rows=1 width=4) (actual time=0.283..0.283 rows=1 loops=1)
+  Buffers: shared hit=15
+  ->  Index Only Scan using tasks_2026_08_user_id_created_at_idx on tasks_2026_08 t  (cost=0.42..92.28 rows=2127 width=0) (actual time=0.011..0.194 rows=2089 loops=1)
+        Index Cond: ((user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid) AND (created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-08-31 23:59:59+00'::timestamp with time zone))
+        Heap Fetches: 0
+        Buffers: shared hit=15
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.131 ms
+Execution Time: 0.302 ms
+
+=== Q5. Тот же запрос пользователя: первая страница
+--- Q5 месяц, задачи пользователя: страница | after
+
+SELECT t.id, t.title, t.status, t.priority, t.due_date, t.user_id, t.project_id, t.created_at
+FROM tasks AS t
+WHERE t.user_id = '335fc496-f143-433c-b8b5-48277f10419e'
+  AND t.created_at >= '2026-08-01 00:00:00+00' AND t.created_at <= '2026-08-31 23:59:59+00'
+ORDER BY t.created_at DESC
+LIMIT 10
+Limit  (cost=0.42..31.83 rows=10 width=85) (actual time=0.012..0.016 rows=10 loops=1)
+  Buffers: shared hit=13
+  ->  Index Scan using tasks_2026_08_user_id_created_at_idx on tasks_2026_08 t  (cost=0.42..6681.06 rows=2127 width=85) (actual time=0.011..0.015 rows=10 loops=1)
+        Index Cond: ((user_id = '335fc496-f143-433c-b8b5-48277f10419e'::uuid) AND (created_at >= '2026-08-01 00:00:00+00'::timestamp with time zone) AND (created_at <= '2026-08-31 23:59:59+00'::timestamp with time zone))
+        Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.141 ms
+Execution Time: 0.032 ms
+
+=== Q6. GET /api/tasks без фильтров (Admin): первая страница, ключ только в ORDER BY
+--- Q6 без фильтров: страница | after
+
+SELECT t.id, t.title, t.status, t.priority, t.due_date, t.user_id, t.project_id, t.created_at
+FROM tasks AS t
+ORDER BY t.created_at DESC
+LIMIT 10
+Limit  (cost=10.87..11.93 rows=10 width=85) (actual time=0.033..0.042 rows=10 loops=1)
+  Buffers: shared hit=15
+  ->  Append  (cost=10.87..528862.22 rows=5000004 width=85) (actual time=0.032..0.040 rows=10 loops=1)
+        Buffers: shared hit=15
+        ->  Index Scan using tasks_2026_12_created_at_due_date_idx on tasks_2026_12 t_29  (cost=0.12..8.14 rows=1 width=588) (actual time=0.008..0.008 rows=0 loops=1)
+              Buffers: shared hit=1
+        ->  Index Scan using tasks_2026_11_created_at_due_date_idx on tasks_2026_11 t_28  (cost=0.12..8.14 rows=1 width=588) (actual time=0.005..0.005 rows=0 loops=1)
+              Buffers: shared hit=1
+        ->  Index Scan using tasks_2026_10_created_at_due_date_idx on tasks_2026_10 t_27  (cost=0.12..8.14 rows=1 width=588) (actual time=0.008..0.008 rows=0 loops=1)
+              Buffers: shared hit=1
+        ->  Index Scan using tasks_2026_09_created_at_due_date_idx on tasks_2026_09 t_26  (cost=0.29..6903.82 rows=68502 width=85) (actual time=0.011..0.017 rows=10 loops=1)
+              Buffers: shared hit=12
+        ->  Index Scan using tasks_2026_08_created_at_due_date_idx on tasks_2026_08 t_25  (cost=0.42..20946.08 rows=207879 width=85) (never executed)
+        ->  Index Scan using tasks_2026_07_created_at_due_date_idx on tasks_2026_07 t_24  (cost=0.42..20983.17 rows=208188 width=85) (never executed)
+        ->  Index Scan using tasks_2026_06_created_at_due_date_idx on tasks_2026_06 t_23  (cost=0.42..21031.78 rows=208758 width=85) (never executed)
+        ->  Index Scan using tasks_2026_05_created_at_due_date_idx on tasks_2026_05 t_22  (cost=0.42..20997.14 rows=208336 width=85) (never executed)
+        ->  Index Scan using tasks_2026_04_created_at_due_date_idx on tasks_2026_04 t_21  (cost=0.42..21054.17 rows=208918 width=85) (never executed)
+        ->  Index Scan using tasks_2026_03_created_at_due_date_idx on tasks_2026_03 t_20  (cost=0.42..20969.95 rows=208102 width=85) (never executed)
+        ->  Index Scan using tasks_2026_02_created_at_due_date_idx on tasks_2026_02 t_19  (cost=0.42..20985.25 rows=208322 width=85) (never executed)
+        ->  Index Scan using tasks_2026_01_created_at_due_date_idx on tasks_2026_01 t_18  (cost=0.42..20932.63 rows=207755 width=85) (never executed)
+        ->  Index Scan using tasks_2025_12_created_at_due_date_idx on tasks_2025_12 t_17  (cost=0.42..21014.49 rows=208673 width=85) (never executed)
+        ->  Index Scan using tasks_2025_11_created_at_due_date_idx on tasks_2025_11 t_16  (cost=0.42..20960.40 rows=208001 width=85) (never executed)
+        ->  Index Scan using tasks_2025_10_created_at_due_date_idx on tasks_2025_10 t_15  (cost=0.42..20928.27 rows=207735 width=85) (never executed)
+        ->  Index Scan using tasks_2025_09_created_at_due_date_idx on tasks_2025_09 t_14  (cost=0.42..20993.85 rows=208372 width=85) (never executed)
+        ->  Index Scan using tasks_2025_08_created_at_due_date_idx on tasks_2025_08 t_13  (cost=0.42..20969.28 rows=208058 width=85) (never executed)
+        ->  Index Scan using tasks_2025_07_created_at_due_date_idx on tasks_2025_07 t_12  (cost=0.42..21017.13 rows=208591 width=85) (never executed)
+        ->  Index Scan using tasks_2025_06_created_at_due_date_idx on tasks_2025_06 t_11  (cost=0.42..21002.10 rows=208384 width=85) (never executed)
+        ->  Index Scan using tasks_2025_05_created_at_due_date_idx on tasks_2025_05 t_10  (cost=0.42..20997.39 rows=208364 width=85) (never executed)
+        ->  Index Scan using tasks_2025_04_created_at_due_date_idx on tasks_2025_04 t_9  (cost=0.42..21031.36 rows=208771 width=85) (never executed)
+        ->  Index Scan using tasks_2025_03_created_at_due_date_idx on tasks_2025_03 t_8  (cost=0.42..20977.39 rows=208100 width=85) (never executed)
+        ->  Index Scan using tasks_2025_02_created_at_due_date_idx on tasks_2025_02 t_7  (cost=0.42..21017.12 rows=208583 width=85) (never executed)
+        ->  Index Scan using tasks_2025_01_created_at_due_date_idx on tasks_2025_01 t_6  (cost=0.42..20986.93 rows=208198 width=85) (never executed)
+        ->  Index Scan using tasks_2024_12_created_at_due_date_idx on tasks_2024_12 t_5  (cost=0.42..21031.24 rows=208751 width=85) (never executed)
+        ->  Index Scan using tasks_2024_11_created_at_due_date_idx on tasks_2024_11 t_4  (cost=0.42..21029.93 rows=208635 width=85) (never executed)
+        ->  Index Scan using tasks_2024_10_created_at_due_date_idx on tasks_2024_10 t_3  (cost=0.42..20993.95 rows=208369 width=85) (never executed)
+        ->  Index Scan using tasks_2024_09_created_at_due_date_idx on tasks_2024_09 t_2  (cost=0.42..14074.82 rows=139655 width=85) (never executed)
+        ->  Index Scan using tasks_2024_08_created_at_due_date_idx on tasks_2024_08 t_1  (cost=0.12..8.14 rows=1 width=588) (never executed)
+Planning:
+  Buffers: shared hit=28
+Planning Time: 0.791 ms
+Execution Time: 0.208 ms
+
+=== Q7. GET /api/tasks/{id}: ключа партиционирования в запросе нет
+--- Q7 задача по id | after
+
+SELECT t.id, t.title, t.status, t.priority, t.due_date, t.user_id, t.project_id, t.created_at
+FROM tasks AS t
+WHERE t.id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'
+LIMIT 1
+Limit  (cost=0.00..7.28 rows=1 width=154) (actual time=0.210..0.213 rows=1 loops=1)
+  Buffers: shared hit=76
+  ->  Append  (cost=0.00..211.08 rows=29 width=154) (actual time=0.210..0.212 rows=1 loops=1)
+        Buffers: shared hit=76
+        ->  Seq Scan on tasks_2024_08 t_1  (cost=0.00..0.00 rows=1 width=588) (actual time=0.002..0.002 rows=0 loops=1)
+              Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+        ->  Index Scan using tasks_2024_09_pkey on tasks_2024_09 t_2  (cost=0.42..8.44 rows=1 width=85) (actual time=0.012..0.012 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2024_10_pkey on tasks_2024_10 t_3  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2024_11_pkey on tasks_2024_11 t_4  (cost=0.42..8.44 rows=1 width=85) (actual time=0.008..0.008 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2024_12_pkey on tasks_2024_12 t_5  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_01_pkey on tasks_2025_01 t_6  (cost=0.42..8.44 rows=1 width=85) (actual time=0.009..0.009 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_02_pkey on tasks_2025_02 t_7  (cost=0.42..8.44 rows=1 width=85) (actual time=0.009..0.009 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_03_pkey on tasks_2025_03 t_8  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_04_pkey on tasks_2025_04 t_9  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_05_pkey on tasks_2025_05 t_10  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_06_pkey on tasks_2025_06 t_11  (cost=0.42..8.44 rows=1 width=85) (actual time=0.010..0.010 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_07_pkey on tasks_2025_07 t_12  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_08_pkey on tasks_2025_08 t_13  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_09_pkey on tasks_2025_09 t_14  (cost=0.42..8.44 rows=1 width=85) (actual time=0.008..0.008 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_10_pkey on tasks_2025_10 t_15  (cost=0.42..8.44 rows=1 width=85) (actual time=0.009..0.009 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_11_pkey on tasks_2025_11 t_16  (cost=0.42..8.44 rows=1 width=85) (actual time=0.008..0.008 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2025_12_pkey on tasks_2025_12 t_17  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_01_pkey on tasks_2026_01 t_18  (cost=0.42..8.44 rows=1 width=85) (actual time=0.015..0.015 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_02_pkey on tasks_2026_02 t_19  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_03_pkey on tasks_2026_03 t_20  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_04_pkey on tasks_2026_04 t_21  (cost=0.42..8.44 rows=1 width=85) (actual time=0.008..0.008 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_05_pkey on tasks_2026_05 t_22  (cost=0.42..8.44 rows=1 width=85) (actual time=0.008..0.008 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_06_pkey on tasks_2026_06 t_23  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_07_pkey on tasks_2026_07 t_24  (cost=0.42..8.44 rows=1 width=85) (actual time=0.007..0.007 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_08_pkey on tasks_2026_08 t_25  (cost=0.42..8.44 rows=1 width=85) (actual time=0.008..0.008 rows=0 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=3
+        ->  Index Scan using tasks_2026_09_pkey on tasks_2026_09 t_26  (cost=0.42..8.44 rows=1 width=85) (actual time=0.010..0.010 rows=1 loops=1)
+              Index Cond: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+              Buffers: shared hit=4
+        ->  Seq Scan on tasks_2026_10 t_27  (cost=0.00..0.00 rows=1 width=588) (never executed)
+              Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+        ->  Seq Scan on tasks_2026_11 t_28  (cost=0.00..0.00 rows=1 width=588) (never executed)
+              Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+        ->  Seq Scan on tasks_2026_12 t_29  (cost=0.00..0.00 rows=1 width=588) (never executed)
+              Filter: (id = '12da2e3e-ad6c-4c92-88b8-1f2dc6f40cdd'::uuid)
+Planning:
+  Buffers: shared hit=28
+Planning Time: 0.625 ms
+Execution Time: 0.558 ms
+
+=== Q8. GET /api/tasks/stats (Admin): группировка по всем задачам
+--- Q8 статистика по статусам | after
+
+SELECT t.status, count(*)::int,
+       count(*) FILTER (WHERE t.due_date < now() AND t.status IN (0, 1))::int
+FROM tasks AS t
+GROUP BY t.status
+ORDER BY t.status
+Finalize GroupAggregate  (cost=151776.29..151777.35 rows=4 width=12) (actual time=581.571..590.069 rows=4 loops=1)
+  Group Key: t.status
+  Buffers: shared hit=14 read=87919
+  ->  Gather Merge  (cost=151776.29..151777.23 rows=8 width=20) (actual time=581.555..590.052 rows=12 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=14 read=87919
+        ->  Sort  (cost=150776.27..150776.28 rows=4 width=20) (actual time=562.784..562.792 rows=4 loops=3)
+              Sort Key: t.status
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=14 read=87919
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Partial HashAggregate  (cost=150776.19..150776.23 rows=4 width=20) (actual time=562.742..562.750 rows=4 loops=3)
+                    Group Key: t.status
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared read=87919
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Append  (cost=0.00..119526.14 rows=2083337 width=12) (actual time=36.189..370.169 rows=1666667 loops=3)
+                          Buffers: shared read=87919
+                          ->  Seq Scan on tasks_2024_08 t_1  (cost=0.00..0.00 rows=1 width=12) (actual time=0.009..0.009 rows=0 loops=1)
+                          ->  Seq Scan on tasks_2026_10 t_27  (cost=0.00..0.00 rows=1 width=12) (actual time=0.003..0.003 rows=0 loops=1)
+                          ->  Seq Scan on tasks_2026_11 t_28  (cost=0.00..0.00 rows=1 width=12) (actual time=0.006..0.006 rows=0 loops=1)
+                          ->  Seq Scan on tasks_2026_12 t_29  (cost=0.00..0.00 rows=1 width=12) (actual time=0.004..0.004 rows=0 loops=1)
+                          ->  Parallel Seq Scan on tasks_2026_04 t_21  (cost=0.00..4544.49 rows=87049 width=12) (actual time=39.186..72.588 rows=208918 loops=1)
+                                Buffers: shared read=3674
+                          ->  Parallel Seq Scan on tasks_2025_04 t_9  (cost=0.00..4539.88 rows=86988 width=12) (actual time=34.842..67.884 rows=208771 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2026_06 t_23  (cost=0.00..4539.82 rows=86982 width=12) (actual time=0.064..36.178 rows=208758 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2024_12 t_5  (cost=0.00..4539.80 rows=86980 width=12) (actual time=0.094..39.685 rows=208751 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2024_11 t_4  (cost=0.00..4539.31 rows=86931 width=12) (actual time=0.090..32.768 rows=208635 loops=1)
+                                Buffers: shared read=3670
+                          ->  Parallel Seq Scan on tasks_2025_02 t_7  (cost=0.00..4537.10 rows=86910 width=12) (actual time=0.080..30.908 rows=208583 loops=1)
+                                Buffers: shared read=3668
+                          ->  Parallel Seq Scan on tasks_2025_07 t_12  (cost=0.00..4536.13 rows=86913 width=12) (actual time=0.071..29.263 rows=208591 loops=1)
+                                Buffers: shared read=3667
+                          ->  Parallel Seq Scan on tasks_2025_12 t_17  (cost=0.00..4535.47 rows=86947 width=12) (actual time=0.054..28.679 rows=208673 loops=1)
+                                Buffers: shared read=3666
+                          ->  Parallel Seq Scan on tasks_2025_06 t_11  (cost=0.00..4533.27 rows=86827 width=12) (actual time=0.059..28.847 rows=208384 loops=1)
+                                Buffers: shared read=3665
+                          ->  Parallel Seq Scan on tasks_2025_05 t_10  (cost=0.00..4532.18 rows=86818 width=12) (actual time=0.051..29.586 rows=208364 loops=1)
+                                Buffers: shared read=3664
+                          ->  Parallel Seq Scan on tasks_2026_05 t_22  (cost=0.00..4532.07 rows=86807 width=12) (actual time=0.092..26.954 rows=208336 loops=1)
+                                Buffers: shared read=3664
+                          ->  Parallel Seq Scan on tasks_2025_09 t_14  (cost=0.00..4531.22 rows=86822 width=12) (actual time=0.051..27.026 rows=208372 loops=1)
+                                Buffers: shared read=3663
+                          ->  Parallel Seq Scan on tasks_2024_10 t_3  (cost=0.00..4531.20 rows=86820 width=12) (actual time=0.070..27.517 rows=208369 loops=1)
+                                Buffers: shared read=3663
+                          ->  Parallel Seq Scan on tasks_2025_01 t_6  (cost=0.00..4530.49 rows=86749 width=12) (actual time=0.046..27.379 rows=208198 loops=1)
+                                Buffers: shared read=3663
+                          ->  Parallel Seq Scan on tasks_2026_02 t_19  (cost=0.00..4530.01 rows=86801 width=12) (actual time=0.055..8.847 rows=69441 loops=3)
+                                Buffers: shared read=3662
+                          ->  Parallel Seq Scan on tasks_2026_07 t_24  (cost=0.00..4529.45 rows=86745 width=12) (actual time=0.045..12.881 rows=104094 loops=2)
+                                Buffers: shared read=3662
+                          ->  Parallel Seq Scan on tasks_2025_03 t_8  (cost=0.00..4528.08 rows=86708 width=12) (actual time=0.037..26.510 rows=208100 loops=1)
+                                Buffers: shared read=3661
+                          ->  Parallel Seq Scan on tasks_2025_08 t_13  (cost=0.00..4526.91 rows=86691 width=12) (actual time=0.035..25.142 rows=208058 loops=1)
+                                Buffers: shared read=3660
+                          ->  Parallel Seq Scan on tasks_2026_03 t_20  (cost=0.00..4526.09 rows=86709 width=12) (actual time=0.036..26.187 rows=208102 loops=1)
+                                Buffers: shared read=3659
+                          ->  Parallel Seq Scan on tasks_2025_11 t_16  (cost=0.00..4524.67 rows=86667 width=12) (actual time=0.043..25.277 rows=208001 loops=1)
+                                Buffers: shared read=3658
+                          ->  Parallel Seq Scan on tasks_2026_08 t_25  (cost=0.00..4521.16 rows=86616 width=12) (actual time=0.057..25.301 rows=207879 loops=1)
+                                Buffers: shared read=3655
+                          ->  Parallel Seq Scan on tasks_2026_01 t_18  (cost=0.00..4518.65 rows=86565 width=12) (actual time=0.043..29.135 rows=207755 loops=1)
+                                Buffers: shared read=3653
+                          ->  Parallel Seq Scan on tasks_2025_10 t_15  (cost=0.00..4517.56 rows=86556 width=12) (actual time=0.038..25.531 rows=207735 loops=1)
+                                Buffers: shared read=3652
+                          ->  Parallel Seq Scan on tasks_2024_09 t_2  (cost=0.00..3277.50 rows=82150 width=12) (actual time=0.040..17.681 rows=139655 loops=1)
+                                Buffers: shared read=2456
+                          ->  Parallel Seq Scan on tasks_2026_09 t_26  (cost=0.00..1606.95 rows=40295 width=12) (actual time=34.512..43.041 rows=68502 loops=1)
+                                Buffers: shared read=1204
+Planning:
+  Buffers: shared read=28
+Planning Time: 0.722 ms
+JIT:
+  Functions: 189
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 9.057 ms, Inlining 0.000 ms, Optimization 4.413 ms, Emission 104.818 ms, Total 118.288 ms
+Execution Time: 593.264 ms
+
+Output format is aligned.
+=== Итог ( after )
+                  query                  | total | in_plan | executed |         scan         | actual_rows | buffers | planning_ms | execution_ms 
+-----------------------------------------+-------+---------+----------+----------------------+-------------+---------+-------------+--------------
+ Q1 месяц, все задачи: COUNT             |    29 |       1 |        1 | Seq Scan             |      207879 |    3655 |       0.244 |       32.003
+ Q2 месяц, все задачи: страница          |    29 |       1 |        1 | Index Scan           |          10 |      13 |       0.141 |        0.035
+ Q3 неделя + статус: COUNT               |    29 |       1 |        1 | Bitmap Heap Scan     |        9844 |    1217 |       0.324 |        3.791
+ Q4 месяц, задачи пользователя: COUNT    |    29 |       1 |        1 | Index Only Scan      |        2089 |      15 |       0.131 |        0.302
+ Q5 месяц, задачи пользователя: страница |    29 |       1 |        1 | Index Scan           |          10 |      13 |       0.141 |        0.032
+ Q6 без фильтров: страница               |    29 |      29 |        4 | Index Scan           |          10 |      15 |       0.791 |        0.208
+ Q7 задача по id                         |    29 |      29 |       26 | Index Scan, Seq Scan |           1 |      76 |       0.625 |        0.558
+ Q8 статистика по статусам               |    29 |      29 |       29 | Seq Scan             |     5000001 |   87933 |       0.722 |      593.264
+(8 rows)
+

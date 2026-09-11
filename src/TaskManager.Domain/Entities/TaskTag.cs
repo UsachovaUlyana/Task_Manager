@@ -11,6 +11,12 @@ public class TaskTag
     public Guid TaskId { get; set; }
 
     /// <summary>
+    /// Gets or sets the creation time of the task. The tasks table is partitioned by created_at,
+    /// so its primary key is (id, created_at) and the foreign key has to include both columns.
+    /// </summary>
+    public DateTime TaskCreatedAt { get; set; }
+
+    /// <summary>
     /// Gets or sets the task.
     /// </summary>
     public TaskItem Task { get; set; } = null!;

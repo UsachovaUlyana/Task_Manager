@@ -23,7 +23,7 @@ public class TaskServiceTests
             .Setup(r => r.GetAllFilteredAsync(
                 It.IsAny<TaskItemStatus?>(), It.IsAny<TaskPriority?>(), It.IsAny<Guid?>(),
                 It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<int>(),
-                It.IsAny<TaskSort?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<TaskSort?>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PagedResult<TaskItem> { Items = new List<TaskItem>() });
 
         var service = new TaskService(
@@ -44,6 +44,40 @@ public class TaskServiceTests
             null, null, null,
             It.Is<DateTime?>(d => d!.Value.Kind == DateTimeKind.Utc && d.Value == new DateTime(2026, 1, 1)),
             It.Is<DateTime?>(d => d!.Value.Kind == DateTimeKind.Utc && d.Value == new DateTime(2026, 1, 8)),
-            1, 10, It.IsAny<TaskSort?>(), It.IsAny<CancellationToken>()), Times.Once);
+            1, 10, It.IsAny<TaskSort?>(), null, null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetTasksAsync_ShouldPassCreatedRangeToRepositoryAsUtc()
+    {
+        // Arrange
+        var repository = new Mock<ITaskRepository>();
+        repository
+            .Setup(r => r.GetByUserIdAsync(
+                It.IsAny<Guid>(), It.IsAny<TaskItemStatus?>(), It.IsAny<TaskPriority?>(), It.IsAny<Guid?>(),
+                It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<TaskSort?>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResult<TaskItem> { Items = new List<TaskItem>() });
+
+        var service = new TaskService(
+            repository.Object, Mock.Of<ITaskTagRepository>(), Mock.Of<ICacheService>(), NullLogger<TaskService>.Instance);
+        var userId = Guid.NewGuid();
+
+        // ?createdFrom=2026-09-01&createdTo=2026-09-30: the range the partitions of tasks are pruned by
+        var filter = new TaskFilterRequest
+        {
+            CreatedFrom = new DateTime(2026, 9, 1),
+            CreatedTo = new DateTime(2026, 9, 30)
+        };
+
+        // Act
+        await service.GetTasksAsync(filter, userId);
+
+        // Assert
+        repository.Verify(r => r.GetByUserIdAsync(
+            userId, null, null, null, null, null, 1, 10, It.IsAny<TaskSort?>(),
+            It.Is<DateTime?>(d => d!.Value.Kind == DateTimeKind.Utc && d.Value == new DateTime(2026, 9, 1)),
+            It.Is<DateTime?>(d => d!.Value.Kind == DateTimeKind.Utc && d.Value == new DateTime(2026, 9, 30)),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

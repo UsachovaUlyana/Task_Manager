@@ -38,6 +38,9 @@ coverage*/
 .DS_Store
 Thumbs.db
 
+# Local secrets: Telegram bot token for partition alerts (see .env.example)
+.env
+
 # Docker volumes (not needed in repo)
 postgres_data/
 redis_data/

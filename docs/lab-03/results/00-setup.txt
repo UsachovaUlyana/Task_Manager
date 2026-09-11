@@ -1,0 +1,12 @@
+DROP SCHEMA
+psql:/scripts/lab-03/00-setup.sql:7: NOTICE:  schema "lab03" does not exist, skipping
+CREATE SCHEMA
+CREATE TABLE
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+       status       
+--------------------
+ схема lab03 готова
+(1 row)
+

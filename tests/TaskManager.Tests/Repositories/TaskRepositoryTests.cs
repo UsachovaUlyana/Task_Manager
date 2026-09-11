@@ -218,6 +218,31 @@ public class TaskRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAllFilteredAsync_ShouldFilterByCreatedAt()
+    {
+        // Arrange
+        var august = CreateTestTask("August");
+        august.CreatedAt = new DateTime(2026, 8, 31, 23, 0, 0, DateTimeKind.Utc);
+        var september = CreateTestTask("September");
+        september.CreatedAt = new DateTime(2026, 9, 5, 0, 0, 0, DateTimeKind.Utc);
+        var october = CreateTestTask("October");
+        october.CreatedAt = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        await _repository.AddAsync(august);
+        await _repository.AddAsync(september);
+        await _repository.AddAsync(october);
+
+        // Act
+        var result = await _repository.GetAllFilteredAsync(
+            null, null, null, null, null, 1, 10,
+            createdFrom: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            createdTo: new DateTime(2026, 9, 30, 23, 59, 59, DateTimeKind.Utc));
+
+        // Assert
+        result.Items.Select(t => t.Title).Should().Equal("September");
+        result.TotalCount.Should().Be(1);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ShouldUpdateTask()
     {
         // Arrange

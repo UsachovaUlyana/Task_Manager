@@ -16,5 +16,7 @@
     <include file="changelog/changesets/009-create-tasks-created-at-indexes.xml"/>
     <include file="changelog/changesets/010-drop-duplicate-indexes.xml"/>
     <include file="changelog/changesets/011-create-tasks-created-at-due-date-index.xml"/>
+    <include file="changelog/changesets/012-partition-tasks-by-created-at.xml"/>
+    <include file="changelog/changesets/013-create-partition-alert-state-table.xml"/>
 
 </databaseChangeLog>

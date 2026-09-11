@@ -22,6 +22,9 @@ public class TaskTagConfiguration : IEntityTypeConfiguration<TaskTag>
         builder.Property(tt => tt.TagId)
             .HasColumnName("tag_id");
 
+        builder.Property(tt => tt.TaskCreatedAt)
+            .HasColumnName("task_created_at");
+
         builder.HasIndex(tt => tt.TagId);
     }
 }

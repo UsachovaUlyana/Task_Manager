@@ -49,9 +49,12 @@ public class TaskService : ITaskService
 
         var dueDateFrom = ToUtc(filter.DueDateFrom);
         var dueDateTo = ToUtc(filter.DueDateTo);
+        var createdFrom = ToUtc(filter.CreatedFrom);
+        var createdTo = ToUtc(filter.CreatedTo);
 
         var cacheKey = $"{CacheKeyPrefix}list:{userId}:{filter.Status}:{filter.Priority}:{filter.ProjectId}:" +
-                       $"{dueDateFrom:O}:{dueDateTo:O}:{sort.Field}:{sort.Descending}:{filter.Page}:{filter.PageSize}";
+                       $"{dueDateFrom:O}:{dueDateTo:O}:{createdFrom:O}:{createdTo:O}:" +
+                       $"{sort.Field}:{sort.Descending}:{filter.Page}:{filter.PageSize}";
 
         var cached = await _cacheService.GetAsync<PagedResult<TaskDto>>(cacheKey, cancellationToken);
         if (cached != null)
@@ -79,13 +82,13 @@ public class TaskService : ITaskService
         {
             result = await _taskRepository.GetByUserIdAsync(
                 userId.Value, status, priority, filter.ProjectId,
-                dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
+                dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, createdFrom, createdTo, cancellationToken);
         }
         else
         {
             result = await _taskRepository.GetAllFilteredAsync(
                 status, priority, filter.ProjectId,
-                dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, cancellationToken);
+                dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, createdFrom, createdTo, cancellationToken);
         }
 
         var response = new PagedResult<TaskDto>
