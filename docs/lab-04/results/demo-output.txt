@@ -1,0 +1,76 @@
+
+=== Два экземпляра PostgreSQL: pg_is_in_recovery() — f у Primary, t у Replica
+   instance    | in_recovery |    lsn     
+---------------+-------------+------------
+ primary :5432 | f           | 0/AC170170
+(1 row)
+
+   instance    | in_recovery |    lsn     
+---------------+-------------+------------
+ replica :5433 | t           | 0/AC170170
+(1 row)
+
+
+=== Streaming replication глазами Primary
+  application_name   |   state   | sync_state | lag_bytes 
+---------------------+-----------+------------+-----------
+ taskmanager-replica | streaming | async      |         0
+(1 row)
+
+
+=== Пишем на Primary
+DELETE 0
+INSERT 0 1
+
+=== Читаем на Replica: строка уже здесь
+    name    |  color  |          created_at          
+------------+---------+------------------------------
+ lab04-demo | #00ff00 | 2026-09-13 23:20:05.08902+00
+(1 row)
+
+
+=== Пробуем писать на Replica
+ERROR:  cannot execute INSERT in a read-only transaction
+
+=== Останавливаем применение WAL на Replica: pg_wal_replay_pause()
+ pg_wal_replay_pause | paused 
+---------------------+--------
+                     | t
+(1 row)
+
+
+=== Меняем цвет тега на Primary
+UPDATE 1
+
+=== Primary отдаёт новое значение, Replica — старое: это replication lag
+ instance |    name    |  color  
+----------+------------+---------
+ primary  | lab04-demo | #ff0000
+(1 row)
+
+ instance |    name    |  color  
+----------+------------+---------
+ replica  | lab04-demo | #00ff00
+(1 row)
+
+  sent_lsn  | replay_lsn | lag_bytes 
+------------+------------+-----------
+ 0/AC171DB0 | 0/AC171D38 |       120
+(1 row)
+
+
+=== Сервис показывает то же самое: GET /health/replica
+{"status":"Healthy","checks":[{"name":"replica","status":"Healthy","description":"The replica is streaming","data":{"replicaConfigured":true,"primaryLsn":"0/AC171DB0","replicaReplayLsn":"0/AC171D38","lagBytes":120,"lagSeconds":6.626505,"connections":1}}]}
+
+=== Возобновляем применение WAL
+ pg_wal_replay_resume 
+----------------------
+ 
+(1 row)
+
+ instance |    name    |  color  
+----------+------------+---------
+ replica  | lab04-demo | #ff0000
+(1 row)
+
+DELETE 1

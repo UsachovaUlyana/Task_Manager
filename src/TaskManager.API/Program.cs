@@ -15,6 +15,7 @@ using TaskManager.API.Background;
 using TaskManager.API.Middleware;
 using TaskManager.Application.Interfaces;
 using TaskManager.Application.Partitioning;
+using TaskManager.Application.Replication;
 using TaskManager.Application.Services;
 using TaskManager.Infrastructure.Data;
 using TaskManager.Infrastructure.Repositories;
@@ -110,10 +111,20 @@ builder.Services.AddSwaggerGen(options =>
     }
 });
 
-// Configure Database
+// Configure Database: writes and read-your-writes go to the primary
+var primaryConnection = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.UseNpgsql(primaryConnection);
+});
+
+// Read replica: lists and statistics are served from here. Without a replica connection
+// the same context points at the primary, so the service works with a single server too.
+var replicaConnection = builder.Configuration.GetConnectionString("ReplicaConnection");
+builder.Services.AddDbContext<ReplicaDbContext>(options =>
+{
+    options.UseNpgsql(string.IsNullOrWhiteSpace(replicaConnection) ? primaryConnection : replicaConnection);
+    options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
 });
 
 // Configure Redis
@@ -192,11 +203,13 @@ builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>()
 builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection")!, name: "postgresql")
     .AddRedis(builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379", name: "redis")
-    .AddCheck<PartitionsHealthCheck>("partitions", tags: new[] { "partitions" });
+    .AddCheck<PartitionsHealthCheck>("partitions", tags: new[] { "partitions" })
+    .AddCheck<ReplicaHealthCheck>("replica", tags: new[] { "replica" });
 
 // Register Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+builder.Services.AddScoped<ITaskReadRepository, TaskReadRepository>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<ITagRepository, TagRepository>();
 builder.Services.AddScoped<ITaskTagRepository, TaskTagRepository>();
@@ -211,6 +224,12 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<ITagService, TagService>();
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
+
+// Streaming replication monitoring
+builder.Services.AddSingleton(
+    builder.Configuration.GetSection(ReplicationOptions.SectionName).Get<ReplicationOptions>() ?? new ReplicationOptions());
+builder.Services.AddScoped<IReplicationMonitor>(sp => new ReplicationRepository(
+    primaryConnection!, replicaConnection, sp.GetRequiredService<ILogger<ReplicationRepository>>()));
 
 // Partition maintenance: nightly job, health check and alerts
 builder.Services.AddSingleton(
@@ -260,6 +279,21 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 {
     // A missing partition is reported by /health/partitions and does not make the service itself unhealthy
     Predicate = check => !check.Tags.Contains("partitions")
+});
+app.MapHealthChecks("/health/replica", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("replica"),
+    ResponseWriter = (context, report) => context.Response.WriteAsJsonAsync(new
+    {
+        status = report.Status.ToString(),
+        checks = report.Entries.Select(e => new
+        {
+            name = e.Key,
+            status = e.Value.Status.ToString(),
+            description = e.Value.Description,
+            data = e.Value.Data
+        })
+    })
 });
 app.MapHealthChecks("/health/partitions", new HealthCheckOptions
 {

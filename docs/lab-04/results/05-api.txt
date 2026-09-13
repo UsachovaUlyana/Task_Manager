@@ -1,0 +1,50 @@
+=== Состояние репликации по данным сервиса: GET /api/replication
+{"success":true
+"data":{"replicaConfigured":true
+"primaryLsn":"0/70F3D658"
+"replicaInRecovery":true
+"replicaReceiveLsn":"0/70F3D658"
+"replicaReplayLsn":"0/70F3D658"
+"lastReplayAt":"2026-09-13T23:10:30.244529Z"
+"lagBytes":0
+"lagSeconds":22.68239
+"connections":[{"clientAddr":"172.20.0.4/32"
+"applicationName":"taskmanager-replica"
+"state":"streaming"
+
+=== GET /health/replica
+{"status":"Healthy","checks":[{"name":"replica","status":"Healthy","description":"The replica is streaming","data":{"replicaConfigured":true,"primaryLsn":"0/70F3D658","replicaReplayLsn":"0/70F3D658","lagBytes":0,"lagSeconds":22.746712,"connections":1}}]}
+HTTP 200
+=== GET /api/tasks?pageSize=5 — чтение списка задач
+HTTP 200, 0.045802 s
+=== POST /api/tasks — создание задачи
+HTTP 201, 0.021222 s
+
+--- SELECT списка задач в логе REPLICA (значит, чтение ушло на Replica):
+6
+2026-09-13 23:10:54.172 UTC [777] LOG:  duration: 0.265 ms  execute <unnamed>: SELECT t0.id, t0.created_at, t0.description, t0.due_date, t0.priority, t0.project_id, t0.status, t0.title, t0.updated_at, t0.user_id, p.id, u.id, t1.task_id, t1.tag_id, t1.task_created_at, t1.id, t1.color, t1.created_at, t1.name, p.created_at, p.description, p.name, p.updated_at, u.created_at, u.email, u.password_hash, u.role, u.updated_at, u.username
+	FROM (
+	    SELECT t.id, t.created_at, t.description, t.due_date, t.priority, t.project_id, t.status, t.title, t.updated_at, t.user_id
+	    FROM tasks AS t
+--- INSERT в логе PRIMARY (значит, запись ушла на Primary):
+2026-09-13 23:10:54.231 UTC [208] LOG:  duration: 0.041 ms  statement: DISCARD ALL
+2026-09-13 23:10:54.231 UTC [208] LOG:  duration: 0.058 ms  parse <unnamed>: INSERT INTO tasks (id, created_at, description, due_date, priority, project_id, status, title, updated_at, user_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+2026-09-13 23:10:54.231 UTC [208] LOG:  duration: 0.045 ms  bind <unnamed>: INSERT INTO tasks (id, created_at, description, due_date, priority, project_id, status, title, updated_at, user_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+2026-09-13 23:10:54.231 UTC [208] DETAIL:  parameters: $1 = '2ddaf2e7-3bc0-4ccf-964a-a08c82f9bb43', $2 = '2026-09-13 23:10:54.228815+00', $3 = 'the write must go to the Primary', $4 = NULL, $5 = '2', $6 = NULL, $7 = '0', $8 = 'LR4: task created through API', $9 = '2026-09-13 23:10:54.228815+00', $10 = '91f85bfc-8f47-45f2-a1b9-6fb73484b737'
+2026-09-13 23:10:54.231 UTC [208] LOG:  duration: 0.399 ms  execute <unnamed>: INSERT INTO tasks (id, created_at, description, due_date, priority, project_id, status, title, updated_at, user_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+2026-09-13 23:10:54.231 UTC [208] DETAIL:  parameters: $1 = '2ddaf2e7-3bc0-4ccf-964a-a08c82f9bb43', $2 = '2026-09-13 23:10:54.228815+00', $3 = 'the write must go to the Primary', $4 = NULL, $5 = '2', $6 = NULL, $7 = '0', $8 = 'LR4: task created through API', $9 = '2026-09-13 23:10:54.228815+00', $10 = '91f85bfc-8f47-45f2-a1b9-6fb73484b737'
+--- INSERT в логе REPLICA (должно быть пусто):
+0
+
+=== Устаревшее чтение через API: останавливаем применение WAL на Replica
+--- POST /api/tasks (Primary принимает запись)
+HTTP 201
+--- GET /api/tasks?sort=-created_at&pageSize=1 — первая задача списка по версии Replica:
+"title":"LR4: task created through API"
+--- та же задача на Primary:
+LR4: created while replay is paused
+--- возобновляем применение WAL и повторяем GET
+"title":"LR4: created while replay is paused"

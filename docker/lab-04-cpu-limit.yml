@@ -1,0 +1,12 @@
+# ЛР №4: наложение к docker-compose.yml для опыта «две отдельные машины».
+# Оба экземпляра PostgreSQL получают по 4 ядра, поэтому Primary больше не может
+# занять все ядра хоста, и вынос чтения на Replica добавляет реальную мощность.
+#
+#   docker compose -f docker-compose.yml -f docker/lab-04-cpu-limit.yml up -d postgres postgres-replica
+
+services:
+  postgres:
+    cpus: 4
+
+  postgres-replica:
+    cpus: 4

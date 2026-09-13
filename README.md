@@ -16,6 +16,8 @@ REST API сервис для управления задачами, постро
 - [Генерация данных](#генерация-данных)
 - [Индексы (ЛР №1)](#индексы-лр-1)
 - [Рост данных (ЛР №2)](#рост-данных-лр-2)
+- [Партиционирование (ЛР №3)](#партиционирование-лр-3)
+- [Масштабирование чтения (ЛР №4)](#масштабирование-чтения-лр-4)
 - [Аутентификация и авторизация](#аутентификация-и-авторизация)
 - [Кэширование](#кэширование)
 - [Мониторинг и метрики](#мониторинг-и-метрики)
@@ -125,12 +127,14 @@ TaskManager/
 │   ├── generate-data.sql             # Массовая генерация тестовых данных
 │   ├── lab-01/                       # Скрипты экспериментов ЛР №1 (индексы)
 │   ├── lab-02/                       # Скрипты экспериментов ЛР №2 (рост данных)
-│   └── lab-03/                       # Скрипты экспериментов ЛР №3 (партиционирование)
+│   ├── lab-03/                       # Скрипты экспериментов ЛР №3 (партиционирование)
+│   └── lab-04/                       # Скрипты экспериментов ЛР №4 (Primary + Replica)
 │
 ├── docs/
 │   ├── lab-01-indexes.md             # Отчёт по ЛР №1
 │   ├── lab-02-growth.md              # Отчёт по ЛР №2
 │   ├── lab-03-partitioning.md        # Отчёт по ЛР №3
+│   ├── lab-04-read-scaling.md        # Отчёт по ЛР №4
 │   └── lab-0N/results/               # Сырые результаты EXPLAIN ANALYZE
 │
 ├── Dockerfile                        # Образ API
@@ -248,6 +252,8 @@ dotnet run
 | API | http://localhost:5000 |
 | Swagger UI | http://localhost:5000/swagger |
 | Health Check | http://localhost:5000/health |
+| PostgreSQL Primary | localhost:5432 |
+| PostgreSQL Replica (только чтение) | localhost:5433 |
 | Prometheus Metrics | http://localhost:5000/metrics |
 | Prometheus UI | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
@@ -587,6 +593,30 @@ powershell -File scripts/lab-03/demo-alert.ps1         # части 10–11: с�
 vhs scripts/lab-03/demo.tape                           # запись терминала
 ```
 
+## Масштабирование чтения (ЛР №4)
+
+Отчёт — [docs/lab-04-read-scaling.md](docs/lab-04-read-scaling.md); он же по ГОСТ 7.32-2017 — [docs/lab-04-report.docx](docs/lab-04-report.docx) ([PDF](docs/lab-04-report.pdf)).
+
+![Запись терминала: Primary и Replica, streaming replication, read-only и replication lag](docs/lab-04/demo.gif)
+
+| Изменение | Зачем |
+|---|---|
+| `docker-compose.yml`: второй PostgreSQL `postgres-replica` на порту 5433 и общий `docker/postgres/pg_hba.conf` | Primary принимает запись, Replica — копия только для чтения |
+| `docker/postgres/replica-entrypoint.sh` | при первом запуске реплика сама создаёт роль и слот репликации, снимает копию `pg_basebackup` и стартует в режиме standby |
+| `ReplicaDbContext`, `ITaskReadRepository`, `TaskReadRepository` | `GET /api/tasks` и `GET /api/tasks/stats` читают с Replica; запись и чтение сразу после записи — с Primary |
+| `GET /api/replication` (Admin), `GET /health/replica` | состояние streaming replication и отставание реплики в байтах WAL и секундах |
+
+Измерения: задержка репликации без нагрузки 120–270 мс, под массовым `UPDATE` — до 30 MB неприменённого WAL. Разделение читающей нагрузки между двумя серверами по 4 ядра дало 869 запросов в секунду против 271 на одном сервере; на общих ядрах хоста прироста нет.
+
+Повторить эксперименты:
+
+```bash
+docker compose up -d                                   # Primary, Replica, миграции, API
+bash scripts/lab-04/run-all.sh                         # части 1–6 и опыты по пропускной способности
+powershell -File scripts/lab-04/demo-replication.ps1   # репликация, read-only, replication lag
+vhs scripts/lab-04/demo.tape                           # запись терминала
+```
+
 ---
 
 ## Аутентификация и авторизация
@@ -707,6 +737,12 @@ GET /health/partitions
 
 Есть ли партиции `tasks` и `lab03.events` на текущий период и 3 вперёд (ЛР №3): `200 Healthy` или `503 Unhealthy` со списком отсутствующих. В общий `/health` не входит.
 
+```http
+GET /health/replica
+```
+
+Состояние реплики (ЛР №4): подключена ли она, находится ли в режиме восстановления и насколько отстала — `lagBytes` и `lagSeconds`.
+
 ---
 
 ## Тестирование
@@ -729,7 +765,7 @@ dotnet test
 | ProjectRepository | 12 тестов (CRUD, GetByUserId, IsUserMember) |
 | TagRepository | 12 тестов (CRUD, GetByName, GetByIds) |
 
-Логику партиций (ЛР №3) проверяют тесты в `tests/TaskManager.Tests/Partitioning`: планировщик партиций, разбор границ из `pg_get_expr`, политика алертов и сервис целиком на подменённых часах. Всего в проекте 93 теста.
+Логику партиций (ЛР №3) проверяют тесты в `tests/TaskManager.Tests/Partitioning`: планировщик партиций, разбор границ из `pg_get_expr`, политика алертов и сервис целиком на подменённых часах. Разделение чтения и записи между Primary и Replica (ЛР №4) проверяют тесты `TaskServiceTests`. Всего в проекте 96 тестов.
 
 ---
 
@@ -761,6 +797,7 @@ dotnet test
 | `ConnectionStrings__DefaultConnection` | Строка подключения к PostgreSQL |
 | `ConnectionStrings__Redis` | Строка подключения к Redis |
 | `Jwt__Key` | Секретный ключ для JWT |
+| `ConnectionStrings__ReplicaConnection` | Строка подключения к реплике PostgreSQL для чтения; пусто — читаем с Primary |
 | `Alerts__Telegram__BotToken` | Токен Telegram-бота для alert о партициях; в Docker — `TELEGRAM_BOT_TOKEN` из `.env` |
 | `Alerts__Telegram__ChatId` | Чат для alert; в Docker — `TELEGRAM_CHAT_ID` из `.env` |
 

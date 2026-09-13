@@ -1,0 +1,75 @@
+=== Опыт 1. Без нагрузки: сколько идёт одна строка от Primary до Replica
+Replica в цикле ждёт строку и сравнивает своё время с created_at, проставленным на Primary.
+NOTICE:  замер 1: строка появилась на Replica через 144.1 мс после коммита на Primary
+NOTICE:  замер 2: строка появилась на Replica через 271.8 мс после коммита на Primary
+NOTICE:  замер 3: строка появилась на Replica через 118.8 мс после коммита на Primary
+NOTICE:  замер 4: строка появилась на Replica через 175.5 мс после коммита на Primary
+NOTICE:  замер 5: строка появилась на Replica через 142.6 мс после коммита на Primary
+
+=== Опыт 2. Под нагрузкой: UPDATE ~240 тысяч задач на Primary
+нагрузка: UPDATE 6 месяцев задач: замеров 124, максимум отставания 31 MB (32006288 байт), максимум replay_lag 7020.0 мс
+--- отставание по ходу нагрузки (каждый пятый замер)
+   ms    |    lag     | lag_bytes | replay_lag_ms |   state   
+---------+------------+-----------+---------------+-----------
+   207.5 | 3817 kB    |   3908928 |           1.2 | streaming
+  1216.0 | 13 MB      |  13312144 |         345.3 | streaming
+  2224.0 | 2232 kB    |   2285576 |          81.2 | streaming
+  3231.1 | 12 MB      |  12582984 |         147.0 | streaming
+  4269.4 | 3832 kB    |   3924000 |          73.2 | streaming
+  5295.8 | 128 bytes  |       128 |           1.9 | streaming
+  6304.7 | 128 bytes  |       128 |           1.9 | streaming
+  7311.6 | 128 bytes  |       128 |           1.9 | streaming
+  8319.4 | 128 bytes  |       128 |           1.9 | streaming
+  9328.5 | 128 bytes  |       128 |           1.9 | streaming
+ 10337.6 | 128 bytes  |       128 |           1.9 | streaming
+ 11345.6 | 128 bytes  |       128 |           1.9 | streaming
+ 12354.8 | 72 bytes   |        72 |        7020.0 | streaming
+ 13363.4 | 72 bytes   |        72 |        7020.0 | streaming
+ 14372.6 | 72 bytes   |        72 |        7020.0 | streaming
+ 15380.4 | 72 bytes   |        72 |        7020.0 | streaming
+ 16387.7 | 72 bytes   |        72 |        7020.0 | streaming
+ 17394.2 | 72 bytes   |        72 |        7020.0 | streaming
+ 18402.8 | 72 bytes   |        72 |        7020.0 | streaming
+ 19410.0 | 16 bytes   |        16 |        7017.9 | streaming
+ 20419.1 | 16 bytes   |        16 |        7017.9 | streaming
+ 21428.2 | 0 bytes    |         0 |           2.0 | streaming
+ 22434.4 | 0 bytes    |         0 |           2.0 | streaming
+ 23443.6 | 3704 bytes |      3704 |           2.0 | streaming
+ 24452.4 | 3704 bytes |      3704 |           2.0 | streaming
+(25 rows)
+
+=== Опыт 3. Останавливаем применение WAL на Replica: pg_wal_replay_pause()
+ pg_wal_replay_pause | paused 
+---------------------+--------
+                     | t
+(1 row)
+
+--- Primary новую строку видит
+ rows_on_primary 
+-----------------
+               1
+(1 row)
+
+--- Replica ещё нет: вот он, replication lag
+ rows_on_replica 
+-----------------
+               0
+(1 row)
+
+-[ RECORD 1 ]--------------
+sent_lsn   | 0/6E736558
+replay_lsn | 0/6E728F68
+lag_bytes  | 54768
+replay_lag | 00:00:00.00179
+
+--- Возобновляем применение WAL
+ pg_wal_replay_resume 
+----------------------
+ 
+(1 row)
+
+ rows_on_replica 
+-----------------
+               1
+(1 row)
+

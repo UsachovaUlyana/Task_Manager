@@ -1,0 +1,48 @@
+=== 1. Запись на Primary: INSERT в tasks (id = 9e5ecb5d-6afd-4f05-80a9-8f6b7bdca983)
+-[ RECORD 1 ]------------------------------------------------
+id         | 9e5ecb5d-6afd-4f05-80a9-8f6b7bdca983
+title      | ЛР4: проверка репликации 2026-09-13 23:33:36 UTC
+status     | 0
+created_at | 2026-09-13 23:33:37.897989+00
+
+ primary_wal_lsn 
+-----------------
+ 0/AC174B68
+(1 row)
+
+=== 2. Чтение на Replica: та же строка
+-[ RECORD 1 ]------------------------------------------------
+id         | 9e5ecb5d-6afd-4f05-80a9-8f6b7bdca983
+title      | ЛР4: проверка репликации 2026-09-13 23:33:36 UTC
+status     | 0
+created_at | 2026-09-13 23:33:37.897989+00
+
+ replica_replay_lsn |      last_xact_replayed      
+--------------------+------------------------------
+ 0/AC174B68         | 2026-09-13 23:33:37.91263+00
+(1 row)
+
+=== 3. UPDATE на Primary
+UPDATE 1
+=== 4. Чтение на Replica после UPDATE
+-[ RECORD 1 ]----------------------------------------------------------------------
+title      | ЛР4: проверка репликации 2026-09-13 23:33:36 UTC (изменено на Primary)
+status     | 1
+updated_at | 2026-09-13 23:33:40.098639+00
+
+=== 5. DELETE на Primary
+DELETE 1
+=== 6. Чтение на Replica после DELETE (0 строк — удаление тоже приехало)
+ rows_on_replica 
+-----------------
+               0
+(1 row)
+
+=== 7. Позиции WAL совпали, отставания нет
+-[ RECORD 1 ]----+--------------------
+application_name | taskmanager-replica
+state            | streaming
+sent_lsn         | 0/AC174F48
+replay_lsn       | 0/AC174F48
+lag_bytes        | 0
+

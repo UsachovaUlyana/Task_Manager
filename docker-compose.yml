@@ -4,6 +4,25 @@ services:
     container_name: taskmanager-postgres
     # 64 МБ /dev/shm по умолчанию не хватает параллельным VACUUM и запросам на миллионах строк
     shm_size: 512mb
+    # ЛР №4: Primary — принимает запись и отдаёт WAL реплике. Параметры репликации заданы явно,
+    # хотя в PostgreSQL 16 они и так по умолчанию такие: так их видно в конфигурации проекта
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      # Слот репликации держит WAL, пока Replica их не получит; ограничение не даёт
+      # заполнить диск, если Replica надолго выключена
+      - -c
+      - max_slot_wal_keep_size=2GB
+      # Имя экземпляра видно в логах и в pg_stat_replication
+      - -c
+      - cluster_name=taskmanager-primary
     environment:
       POSTGRES_USER: taskmanager
       POSTGRES_PASSWORD: taskmanager_password
@@ -13,6 +32,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts:/scripts:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     networks:
       - taskmanager-network
     healthcheck:
@@ -20,6 +40,54 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: taskmanager-postgres-replica
+    shm_size: 256mb
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # При первом запуске entrypoint снимает базовую копию Primary через pg_basebackup
+    entrypoint: ["/bin/sh", "/replica-entrypoint.sh"]
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      # hot_standby разрешает читать с Replica, пока она применяет WAL
+      - -c
+      - hot_standby=on
+      # Replica сообщает Primary, какие строки ей ещё нужны: длинные запросы на Replica
+      # не будут отменяться из-за VACUUM на Primary
+      - -c
+      - hot_standby_feedback=on
+      # Имя реплики видно на Primary в pg_stat_replication.application_name
+      - -c
+      - cluster_name=taskmanager-replica
+    environment:
+      POSTGRES_USER: taskmanager
+      POSTGRES_PASSWORD: taskmanager_password
+      POSTGRES_DB: taskmanager_db
+      PRIMARY_HOST: postgres
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: replicator
+      REPLICATION_PASSWORD: replicator_password
+      REPLICATION_SLOT: replica_slot
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./docker/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./scripts:/scripts:ro
+    networks:
+      - taskmanager-network
+    healthcheck:
+      # Replica здорова, когда принимает подключения и находится в режиме восстановления
+      test: ["CMD-SHELL", "pg_isready -U taskmanager -d taskmanager_db && psql -U taskmanager -d taskmanager_db -tAc 'SELECT pg_is_in_recovery()' | grep -q t"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -61,6 +129,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-replica:
+        condition: service_healthy
       redis:
         condition: service_healthy
       liquibase:
@@ -68,6 +138,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=taskmanager_db;Username=taskmanager;Password=taskmanager_password
+      # ЛР №4: чтение списков задач идёт на Replica, запись — на Primary
+      ConnectionStrings__ReplicaConnection: Host=postgres-replica;Port=5432;Database=taskmanager_db;Username=taskmanager;Password=taskmanager_password
       ConnectionStrings__Redis: redis:6379
       # Алерты о партициях (ЛР №3): токен и чат берутся из локального .env, он не коммитится
       Alerts__Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
@@ -113,6 +185,7 @@ services:
 
 volumes:
   postgres_data:
+  postgres_replica_data:
   redis_data:
   prometheus_data:
   grafana_data:

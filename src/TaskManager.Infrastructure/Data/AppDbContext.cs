@@ -17,6 +17,15 @@ public class AppDbContext : DbContext
     }
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="AppDbContext"/> class for a derived context,
+    /// such as <see cref="ReplicaDbContext"/> with its own connection.
+    /// </summary>
+    /// <param name="options">The database context options.</param>
+    protected AppDbContext(DbContextOptions options) : base(options)
+    {
+    }
+
+    /// <summary>
     /// Gets or sets the users DbSet.
     /// </summary>
     public DbSet<User> Users => Set<User>();

@@ -15,6 +15,7 @@ namespace TaskManager.Application.Services;
 public class TaskService : ITaskService
 {
     private readonly ITaskRepository _taskRepository;
+    private readonly ITaskReadRepository _taskReadRepository;
     private readonly ITaskTagRepository _taskTagRepository;
     private readonly ICacheService _cacheService;
     private readonly ILogger<TaskService> _logger;
@@ -26,11 +27,13 @@ public class TaskService : ITaskService
     /// </summary>
     public TaskService(
         ITaskRepository taskRepository,
+        ITaskReadRepository taskReadRepository,
         ITaskTagRepository taskTagRepository,
         ICacheService cacheService,
         ILogger<TaskService> logger)
     {
         _taskRepository = taskRepository;
+        _taskReadRepository = taskReadRepository;
         _taskTagRepository = taskTagRepository;
         _cacheService = cacheService;
         _logger = logger;
@@ -78,15 +81,17 @@ public class TaskService : ITaskService
 
         PagedResult<TaskItem> result;
 
+        // Lists are read from the replica: a page of tasks may be a fraction of a second behind,
+        // which is acceptable here. Writes and read-after-write stay on the primary.
         if (userId.HasValue)
         {
-            result = await _taskRepository.GetByUserIdAsync(
+            result = await _taskReadRepository.GetByUserIdAsync(
                 userId.Value, status, priority, filter.ProjectId,
                 dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, createdFrom, createdTo, cancellationToken);
         }
         else
         {
-            result = await _taskRepository.GetAllFilteredAsync(
+            result = await _taskReadRepository.GetAllFilteredAsync(
                 status, priority, filter.ProjectId,
                 dueDateFrom, dueDateTo, filter.Page, filter.PageSize, sort, createdFrom, createdTo, cancellationToken);
         }
@@ -115,6 +120,8 @@ public class TaskService : ITaskService
             return cached;
         }
 
+        // A single task is read from the primary: it may have just been created or updated
+        // by the same client, and the replica could still be missing that change
         var task = await _taskRepository.GetByIdWithDetailsAsync(id, cancellationToken);
         if (task == null)
         {
@@ -228,7 +235,8 @@ public class TaskService : ITaskService
     /// <inheritdoc/>
     public async Task<IReadOnlyList<TaskStatusStatsDto>> GetStatusStatsAsync(Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var stats = await _taskRepository.GetStatusStatsAsync(userId, DateTime.UtcNow, cancellationToken);
+        // Statistics scan every task, so this heavy read belongs on the replica
+        var stats = await _taskReadRepository.GetStatusStatsAsync(userId, DateTime.UtcNow, cancellationToken);
 
         return stats.Select(s => new TaskStatusStatsDto
         {

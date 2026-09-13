@@ -1,0 +1,27 @@
+=== Режим экземпляра
+ in_recovery | transaction_read_only | hot_standby 
+-------------+-----------------------+-------------
+ t           | on                    | on
+(1 row)
+
+=== SELECT на Replica работает
+  tasks  
+---------
+ 1000000
+(1 row)
+
+=== INSERT на Replica
+ERROR:  25006: cannot execute INSERT in a read-only transaction
+LOCATION:  PreventCommandIfReadOnly, utility.c:414
+=== UPDATE на Replica
+ERROR:  25006: cannot execute UPDATE in a read-only transaction
+LOCATION:  PreventCommandIfReadOnly, utility.c:414
+=== DELETE на Replica
+ERROR:  25006: cannot execute DELETE in a read-only transaction
+LOCATION:  PreventCommandIfReadOnly, utility.c:414
+=== CREATE TABLE на Replica
+ERROR:  25006: cannot execute CREATE TABLE in a read-only transaction
+LOCATION:  PreventCommandIfReadOnly, utility.c:414
+=== Даже явная транзакция на запись не открывается
+ERROR:  0A000: cannot set transaction read-write mode during recovery
+LOCATION:  call_bool_check_hook, guc.c:6670

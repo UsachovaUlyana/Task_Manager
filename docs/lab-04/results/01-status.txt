@@ -1,0 +1,73 @@
+=== Контейнеры
+NAME                           SERVICE            STATUS
+taskmanager-api                api                Up About a minute
+taskmanager-postgres           postgres           Up 9 minutes (healthy)
+taskmanager-postgres-replica   postgres-replica   Up 42 seconds (healthy)
+taskmanager-redis              redis              Up About a minute (healthy)
+
+=== Кто есть кто: pg_is_in_recovery() — f у Primary, t у Replica
+      instance       | in_recovery |  wal_lsn   | cluster_name 
+---------------------+-------------+------------+--------------
+ primary (порт 5432) | f           | 0/527E48E8 | 
+(1 row)
+
+      instance       | in_recovery | replay_lsn |    cluster_name     
+---------------------+-------------+------------+---------------------
+ replica (порт 5433) | t           | 0/527E48E8 | taskmanager-replica
+(1 row)
+
+=== Параметры репликации на Primary
+          name          | setting | unit 
+------------------------+---------+------
+ hot_standby            | on      | 
+ max_replication_slots  | 10      | 
+ max_slot_wal_keep_size | 2048    | MB
+ max_wal_senders        | 10      | 
+ synchronous_commit     | on      | 
+ wal_level              | replica | 
+(6 rows)
+
+=== pg_stat_replication на Primary: подключённая Replica
+-[ RECORD 1 ]----+--------------------
+application_name | taskmanager-replica
+client_addr      | 172.20.0.4
+state            | streaming
+sync_state       | async
+sent_lsn         | 0/527E48E8
+write_lsn        | 0/527E48E8
+flush_lsn        | 0/527E48E8
+replay_lsn       | 0/527E48E8
+write_lag        | 
+flush_lag        | 
+replay_lag       | 
+lag_bytes        | 0
+
+=== Слот репликации на Primary
+  slot_name   | slot_type | active | restart_lsn | wal_retained 
+--------------+-----------+--------+-------------+--------------
+ replica_slot | physical  | t      | 0/527E48E8  | 0 bytes
+(1 row)
+
+=== pg_stat_wal_receiver на Replica: приём WAL
+-[ RECORD 1 ]---------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+status                | streaming
+sender_host           | postgres
+sender_port           | 5432
+slot_name             | replica_slot
+written_lsn           | 0/527E48E8
+flushed_lsn           | 0/52000000
+latest_end_lsn        | 0/527E48E8
+last_msg_receipt_time | 2026-09-13 23:02:42.361368+00
+conninfo              | user=replicator password=******** channel_binding=prefer dbname=replication host=postgres port=5432 fallback_application_name=taskmanager-replica sslmode=prefer sslcompression=0 sslcertmode=allow sslsni=1 ssl_min_protocol_version=TLSv1.2 gssencmode=prefer krbsrvname=postgres gssdelegation=0 target_session_attrs=any load_balance_hosts=disable
+
+=== Данные на обоих экземплярах
+ instance |  tasks  
+----------+---------
+ primary  | 1000000
+(1 row)
+
+ instance |  tasks  
+----------+---------
+ replica  | 1000000
+(1 row)
+
