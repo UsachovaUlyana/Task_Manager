@@ -112,3 +112,27 @@ public class ForbiddenException : AppException
     {
     }
 }
+
+/// <summary>
+/// Exception thrown when a shard needed by the request does not answer.
+/// </summary>
+public class ShardUnavailableException : AppException
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ShardUnavailableException"/> class.
+    /// </summary>
+    /// <param name="shards">The shards that did not answer.</param>
+    /// <param name="innerMessage">The reason reported by the database driver.</param>
+    public ShardUnavailableException(IReadOnlyCollection<int> shards, string? innerMessage = null)
+        : base("SHARD_UNAVAILABLE",
+            $"Shard {string.Join(", ", shards)} is unavailable, the data stored there cannot be read or written now."
+            + (innerMessage is null ? string.Empty : $" {innerMessage}"))
+    {
+        Shards = shards;
+    }
+
+    /// <summary>
+    /// Gets the shards that did not answer.
+    /// </summary>
+    public IReadOnlyCollection<int> Shards { get; }
+}

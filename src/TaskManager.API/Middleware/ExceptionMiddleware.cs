@@ -51,6 +51,8 @@ public class ExceptionMiddleware
             ValidationException ex => (HttpStatusCode.BadRequest, ApiError.Create(ex.Code, ex.Message, ex.Errors)),
             UnauthorizedException ex => (HttpStatusCode.Unauthorized, ApiError.Create(ex.Code, ex.Message)),
             ForbiddenException ex => (HttpStatusCode.Forbidden, ApiError.Create(ex.Code, ex.Message)),
+            // A shard that does not answer is a temporary server-side problem, not a bad request
+            ShardUnavailableException ex => (HttpStatusCode.ServiceUnavailable, ApiError.Create(ex.Code, ex.Message)),
             AppException ex => (HttpStatusCode.BadRequest, ApiError.Create(ex.Code, ex.Message)),
             _ => (HttpStatusCode.InternalServerError, ApiError.Create("INTERNAL_ERROR", "An unexpected error occurred."))
         };

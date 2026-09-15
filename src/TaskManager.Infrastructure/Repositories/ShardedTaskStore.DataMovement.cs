@@ -29,7 +29,7 @@ public partial class ShardedTaskStore
                 await using var truncate = new NpgsqlCommand("TRUNCATE tasks", connection);
                 await truncate.ExecuteNonQueryAsync(cancellationToken);
             }
-            catch (Exception ex) when (shard >= router.ShardCount && ex is NpgsqlException or System.Net.Sockets.SocketException)
+            catch (Application.Exceptions.ShardUnavailableException) when (shard >= router.ShardCount)
             {
                 _logger.LogInformation("Shard {Shard} is not running and is not used, skipped", shard);
             }

@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using TaskManager.Application.Common;
+using TaskManager.Application.Exceptions;
 using TaskManager.Application.Interfaces;
 using TaskManager.Application.Sharding;
 using TaskManager.Domain.Entities;
@@ -60,44 +61,50 @@ public partial class ShardedTaskStore : IShardedTaskStore
     /// <inheritdoc/>
     public async Task<IReadOnlyDictionary<Guid, long>> CountByKeyAsync(int shard, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenShardAsync(shard, cancellationToken);
-        var rows = await connection.QueryAsync<(Guid Key, long Count)>(new CommandDefinition(
-            "SELECT user_id, count(*) FROM tasks GROUP BY user_id", cancellationToken: cancellationToken));
-        return rows.ToDictionary(r => r.Key, r => r.Count);
+        return await OnShardAsync(shard, async connection =>
+        {
+            var rows = await connection.QueryAsync<(Guid Key, long Count)>(new CommandDefinition(
+                "SELECT user_id, count(*) FROM tasks GROUP BY user_id", cancellationToken: cancellationToken));
+            return rows.ToDictionary(r => r.Key, r => r.Count);
+        }, cancellationToken);
     }
 
     /// <inheritdoc/>
     public async Task<PagedResult<TaskItem>> GetByKeyAsync(
         int shard, Guid userId, int page, int pageSize, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenShardAsync(shard, cancellationToken);
-        var total = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT count(*) FROM tasks WHERE user_id = @UserId", new { UserId = userId }, cancellationToken: cancellationToken));
-        var rows = await connection.QueryAsync<TaskRow>(new CommandDefinition(
-            $"SELECT {Columns} FROM tasks WHERE user_id = @UserId ORDER BY created_at DESC LIMIT @Take OFFSET @Skip",
-            new { UserId = userId, Take = pageSize, Skip = (page - 1) * pageSize }, cancellationToken: cancellationToken));
-
-        return new PagedResult<TaskItem>
+        return await OnShardAsync(shard, async connection =>
         {
-            Items = rows.Select(r => r.ToEntity()).ToList(),
-            TotalCount = total,
-            Page = page,
-            PageSize = pageSize
-        };
+            var total = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT count(*) FROM tasks WHERE user_id = @UserId", new { UserId = userId }, cancellationToken: cancellationToken));
+            var rows = await connection.QueryAsync<TaskRow>(new CommandDefinition(
+                $"SELECT {Columns} FROM tasks WHERE user_id = @UserId ORDER BY created_at DESC LIMIT @Take OFFSET @Skip",
+                new { UserId = userId, Take = pageSize, Skip = (page - 1) * pageSize }, cancellationToken: cancellationToken));
+
+            return new PagedResult<TaskItem>
+            {
+                Items = rows.Select(r => r.ToEntity()).ToList(),
+                TotalCount = total,
+                Page = page,
+                PageSize = pageSize
+            };
+        }, cancellationToken);
     }
 
     /// <inheritdoc/>
     public async Task InsertAsync(int shard, TaskItem task, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenShardAsync(shard, cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition(
-            $"INSERT INTO tasks ({Columns}) VALUES (@Id, @UserId, @ProjectId, @Title, @Description, @Status, @Priority, @DueDate, @CreatedAt, @UpdatedAt)",
-            new
-            {
-                task.Id, task.UserId, task.ProjectId, task.Title, task.Description,
-                Status = (int)task.Status, Priority = (int)task.Priority, task.DueDate, task.CreatedAt, task.UpdatedAt
-            },
-            cancellationToken: cancellationToken));
+        await OnShardAsync(shard, async connection =>
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                $"INSERT INTO tasks ({Columns}) VALUES (@Id, @UserId, @ProjectId, @Title, @Description, @Status, @Priority, @DueDate, @CreatedAt, @UpdatedAt)",
+                new
+                {
+                    task.Id, task.UserId, task.ProjectId, task.Title, task.Description,
+                    Status = (int)task.Status, Priority = (int)task.Priority, task.DueDate, task.CreatedAt, task.UpdatedAt
+                },
+                cancellationToken: cancellationToken));
+        }, cancellationToken);
     }
 
     /// <inheritdoc/>
@@ -109,14 +116,15 @@ public partial class ShardedTaskStore : IShardedTaskStore
         {
             try
             {
-                await using var connection = await OpenShardAsync(shard, cancellationToken);
-                if (await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-                        "SELECT EXISTS (SELECT 1 FROM tasks WHERE id = @Id)", new { Id = taskId }, cancellationToken: cancellationToken)))
+                var exists = await OnShardAsync(shard, connection => connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+                    "SELECT EXISTS (SELECT 1 FROM tasks WHERE id = @Id)", new { Id = taskId }, cancellationToken: cancellationToken)),
+                    cancellationToken);
+                if (exists)
                 {
                     found.Add(shard);
                 }
             }
-            catch (NpgsqlException ex)
+            catch (ShardUnavailableException ex)
             {
                 _logger.LogDebug(ex, "Shard {Shard} is not available", shard);
             }
@@ -124,6 +132,39 @@ public partial class ShardedTaskStore : IShardedTaskStore
 
         return found;
     }
+
+    /// <summary>
+    /// Runs work on a shard connection. A lost connection — the server is down, restarting or the pooled
+    /// connection was cut — means the shard is unavailable, not that the query is wrong.
+    /// </summary>
+    private async Task<T> OnShardAsync<T>(int shard, Func<NpgsqlConnection, Task<T>> work, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenShardAsync(shard, cancellationToken);
+        try
+        {
+            return await work(connection);
+        }
+        catch (Exception ex) when (IsConnectionFailure(ex))
+        {
+            // Other pooled connections to this server are dead too
+            NpgsqlConnection.ClearPool(connection);
+            _logger.LogWarning("Shard {Shard} connection lost: {Reason}", shard, ex.Message);
+            throw new ShardUnavailableException(new[] { shard }, ex.Message);
+        }
+    }
+
+    private Task OnShardAsync(int shard, Func<NpgsqlConnection, Task> work, CancellationToken cancellationToken)
+        => OnShardAsync(shard, async connection => { await work(connection); return true; }, cancellationToken);
+
+    private static bool IsConnectionFailure(Exception ex) => ex switch
+    {
+        // 57P01 admin shutdown, 57P02 crash shutdown, 57P03 cannot connect now: the server is going away
+        PostgresException postgres => postgres.SqlState is "57P01" or "57P02" or "57P03",
+        // Any other driver error without a server response is a broken connection or a timeout
+        NpgsqlException => true,
+        System.Net.Sockets.SocketException or IOException or TimeoutException => true,
+        _ => false
+    };
 
     private async Task<NpgsqlConnection> OpenShardAsync(int shard, CancellationToken cancellationToken)
     {
@@ -133,8 +174,18 @@ public partial class ShardedTaskStore : IShardedTaskStore
         }
 
         var connection = new NpgsqlConnection(_options.Shards[shard].ConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        return connection;
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            return connection;
+        }
+        catch (Exception ex) when (ex is NpgsqlException or System.Net.Sockets.SocketException or TimeoutException)
+        {
+            NpgsqlConnection.ClearPool(connection);
+            await connection.DisposeAsync();
+            _logger.LogWarning("Shard {Shard} is unavailable: {Reason}", shard, ex.Message);
+            throw new ShardUnavailableException(new[] { shard }, ex.Message);
+        }
     }
 
     private sealed class TopologyRow

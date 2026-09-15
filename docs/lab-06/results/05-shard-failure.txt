@@ -1,0 +1,48 @@
+=== Пользователи для проверки: gen_user_2 → Shard 0, gen_user_4 → Shard 2
+
+=== До отказа: все шарды отвечают
+Shard 0: доступен, 27.23 мс
+Shard 1: доступен, 21.44 мс
+Shard 2: доступен, 39.92 мс
+GET /health (сервис в целом)       HTTP 200, 0.011 с
+POST /api/auth/login (основная база) HTTP 200, 0.031 с
+GET /api/tasks (реплика)                HTTP 200, 0.293 с
+GET /api/projects (основная база)  HTTP 200, 0.106 с
+Задачи gen_user_2 (Shard 0)              HTTP 200, 0.030 с
+Задачи gen_user_4 (Shard 2)              HTTP 200, 0.034 с
+Создать задачу gen_user_4 (Shard 2) HTTP 201, 1.513 с
+Статистика по всем шардам HTTP 200, 0.123 с
+Статистика, allowPartial=true        HTTP 200, 0.084 с
+Новые задачи по всем шардам HTTP 200, 0.046 с
+Новые задачи, allowPartial=true     HTTP 200, 0.034 с
+
+=== Отказ: docker compose stop postgres-shard-2
+ Container taskmanager-shard-2  Stopped
+Shard 0: доступен, 0.41 мс
+Shard 1: доступен, 0.36 мс
+Shard 2: НЕДОСТУПЕН, 4.15 мс
+
+GET /health (сервис в целом)       HTTP 200, 0.009 с
+POST /api/auth/login (основная база) HTTP 200, 0.016 с
+GET /api/tasks (реплика)                HTTP 200, 0.015 с
+GET /api/projects (основная база)  HTTP 200, 0.010 с
+Задачи gen_user_2 (Shard 0)              HTTP 200, 0.031 с
+Задачи gen_user_4 (Shard 2)              HTTP 503, 1.292 с
+Создать задачу gen_user_4 (Shard 2) HTTP 503, 1.291 с
+Статистика по всем шардам HTTP 503, 1.326 с
+Статистика, allowPartial=true        HTTP 200, 1.299 с
+Новые задачи по всем шардам HTTP 503, 1.318 с
+Новые задачи, allowPartial=true     HTTP 200, 1.305 с
+
+=== Что возвращает сервис при обращении к недоступному шарду
+{"code":"SHARD_UNAVAILABLE","message":"Shard 2 is unavailable, the data stored there cannot be read or written now. Name or service not known","details":null,"traceId":"0HNOJCFSQ2EP7:00000001"}
+--- неполная статистика с явной пометкой
+{"partial":true,"total":659715,"tasksPerShard":{"shard-0":339959,"shard-1":319756},"shards":[{"shard":0,"available":true},{"shard":1,"available":true},{"shard":2,"available":false}]}
+
+=== Восстановление: docker compose start postgres-shard-2
+ Container taskmanager-shard-2  Started
+Shard 0: доступен, 0.5 мс
+Shard 1: доступен, 0.42 мс
+Shard 2: доступен, 13.48 мс
+Задачи gen_user_4 (Shard 2) после восстановления HTTP 200, 0.012 с
+Статистика снова полная: 1000001 задач

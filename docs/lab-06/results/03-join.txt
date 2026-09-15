@@ -1,0 +1,41 @@
+=== JOIN сервиса: список задач (TaskRepository.GetAllFilteredAsync, EF Core)
+SELECT t0.*, p.*, u.*, t1.*
+FROM (SELECT t.* FROM tasks AS t WHERE … ORDER BY t.created_at DESC LIMIT $1 OFFSET $2) AS t0
+LEFT JOIN projects AS p ON t0.project_id = p.id
+INNER JOIN users AS u ON t0.user_id = u.id
+LEFT JOIN (SELECT t2.task_id, t2.tag_id, t3.* FROM task_tags AS t2 INNER JOIN tags AS t3 ON t2.tag_id = t3.id) AS t1
+       ON t0.id = t1.task_id AND t0.created_at = t1.task_created_at
+
+=== Где лежат таблицы этого JOIN после шардирования
+shard-0 | tasks
+shard-1 | tasks
+shard-2 | tasks
+main | projects, tags, task_tags, tasks, users
+
+=== Тот же JOIN одним SQL-запросом на шарде пользователя (Shard 2)
+ERROR:  relation "projects" does not exist
+LINE 1: SELECT t.title, p.name FROM tasks t LEFT JOIN projects p ON ...
+                                                      ^
+=== JOIN на стороне сервиса: GET /api/shards/queries/users/{id}/tasks-with-projects
+Пользователь gen_user_100, Shard 2, всего 24.22 мс
+  shard-2: SELECT … FROM tasks WHERE user_id = @user ORDER BY created_at DESC LIMIT @n → строк: 20, 1.9 мс
+  main: SELECT id, name FROM projects WHERE id = ANY(@ids), 14 ids → строк: 14, 15.35 мс
+  main: SELECT username FROM users WHERE id = @user → строк: 1, 3.95 мс
+--- первые строки результата
+  2026-09-12  Task #346422  →  без проекта
+  2026-09-11  Task #948673  →  Project 520
+  2026-09-10  Task #261246  →  Project 175
+  2026-09-10  Task #576470  →  Project 439
+  2026-09-10  Task #976115  →  Project 923
+
+=== Для сравнения: тот же JOIN в одной базе (основная база, все таблицы рядом)
+ Planning Time: 33.758 ms
+ Execution Time: 1.997 ms
+
+=== Связанные записи на разных шардах: задачи одного проекта
+По скольким шардам разбросаны задачи каждого проекта (shard key — user_id, а не project_id):
+  проектов на 3 шард(ах): 1000
+--- самый большой проект: сколько его задач на каждом шарде
+shard-0 | 277 | 259
+shard-1 | 293 | 258
+shard-2 | 322 | 288

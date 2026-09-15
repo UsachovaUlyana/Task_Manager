@@ -1,0 +1,25 @@
+
+=== COUNT по всем шардам: каждый шард считает свою часть, сервис складывает
+shard-0:  339959 задач
+shard-1:  319756 задач
+shard-2:  340285 задач
+Итого:   1000000 задач за 78,25 мс
+
+=== ORDER BY created_at DESC LIMIT 5: top-5 с каждого шарда, слияние в сервисе
+2026-09-13 22:50:56  Shard 2  Task #839460
+2026-09-13 22:50:34  Shard 2  Task #91296
+2026-09-13 22:50:03  Shard 1  Task #497509
+2026-09-13 22:49:05  Shard 2  Task #606862
+2026-09-13 22:48:24  Shard 1  Task #203638
+
+=== Отказ: останавливаем Shard 2
+docker compose stop postgres-shard-2: остановлен
+Задачи gen_user_2  (Shard 0):      HTTP 200
+Задачи gen_user_4  (Shard 2):      HTTP 503 SHARD_UNAVAILABLE
+Статистика по всем шардам:          HTTP 503 SHARD_UNAVAILABLE
+Статистика, allowPartial=true:      partial=True, total=659715
+Проекты (основная база):            HTTP 200
+
+=== Восстановление: запускаем Shard 2
+docker compose start postgres-shard-2: запущен
+Статистика по всем шардам:          HTTP 200, total=1000000

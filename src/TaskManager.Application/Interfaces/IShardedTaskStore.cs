@@ -54,4 +54,29 @@ public interface IShardedTaskStore
     /// Checks which shards contain the task: used to prove where a record landed.
     /// </summary>
     Task<IReadOnlyList<int>> FindTaskAsync(Guid taskId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts tasks by status on one shard, returning sums instead of averages so shards can be merged exactly.
+    /// </summary>
+    Task<IReadOnlyList<StatusAggregate>> AggregateByStatusAsync(int shard, DateTime now, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the newest tasks of one shard: ORDER BY created_at DESC LIMIT <paramref name="take"/>.
+    /// </summary>
+    Task<IReadOnlyList<TaskItem>> GetNewestAsync(int shard, int take, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets project names from the main database.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, string>> GetProjectNamesAsync(IReadOnlyCollection<Guid> projectIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a user name from the main database.
+    /// </summary>
+    Task<string?> GetUsernameAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Checks that the shard answers; throws <c>ShardUnavailableException</c> otherwise.
+    /// </summary>
+    Task PingAsync(int shard, CancellationToken cancellationToken = default);
 }

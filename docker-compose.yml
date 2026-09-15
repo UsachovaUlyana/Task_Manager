@@ -202,11 +202,12 @@ services:
       # ЛР №4: чтение списков задач идёт на Replica, запись — на Primary
       ConnectionStrings__ReplicaConnection: Host=postgres-replica;Port=5432;Database=taskmanager_db;Username=taskmanager;Password=taskmanager_password
       ConnectionStrings__Redis: redis:6379
-      # ЛР №5: шарды задач. Первые Sharding__ActiveShards из списка принимают данные
-      Sharding__Shards__0__ConnectionString: Host=postgres-shard-0;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
-      Sharding__Shards__1__ConnectionString: Host=postgres-shard-1;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
-      Sharding__Shards__2__ConnectionString: Host=postgres-shard-2;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
-      Sharding__Shards__3__ConnectionString: Host=postgres-shard-3;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
+      # ЛР №5: шарды задач. Первые Sharding__ActiveShards из списка принимают данные.
+      # ЛР №6: Timeout=3 — недоступный шард обнаруживается за 3 секунды, а не за 15 по умолчанию
+      Sharding__Shards__0__ConnectionString: Host=postgres-shard-0;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password;Timeout=3
+      Sharding__Shards__1__ConnectionString: Host=postgres-shard-1;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password;Timeout=3
+      Sharding__Shards__2__ConnectionString: Host=postgres-shard-2;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password;Timeout=3
+      Sharding__Shards__3__ConnectionString: Host=postgres-shard-3;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password;Timeout=3
       # Алерты о партициях (ЛР №3): токен и чат берутся из локального .env, он не коммитится
       Alerts__Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
       Alerts__Telegram__ChatId: ${TELEGRAM_CHAT_ID:-}

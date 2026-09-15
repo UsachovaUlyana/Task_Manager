@@ -238,6 +238,7 @@ builder.Services.AddSingleton(shardingOptions);
 builder.Services.AddScoped<IShardedTaskStore>(sp => new ShardedTaskStore(
     shardingOptions, primaryConnection!, sp.GetRequiredService<ILogger<ShardedTaskStore>>()));
 builder.Services.AddScoped<IShardingService, ShardingService>();
+builder.Services.AddScoped<IDistributedTaskQueryService, DistributedTaskQueryService>();
 
 // Partition maintenance: nightly job, health check and alerts
 builder.Services.AddSingleton(
