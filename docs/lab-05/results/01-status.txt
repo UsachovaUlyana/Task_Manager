@@ -1,0 +1,48 @@
+=== Контейнеры PostgreSQL
+NAME                           SERVICE            STATUS                    PORTS
+taskmanager-postgres           postgres           Up 16 minutes (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+taskmanager-postgres-replica   postgres-replica   Up 3 minutes (healthy)    0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+taskmanager-shard-0            postgres-shard-0   Up 15 minutes (healthy)   0.0.0.0:5440->5432/tcp, [::]:5440->5432/tcp
+taskmanager-shard-1            postgres-shard-1   Up 15 minutes (healthy)   0.0.0.0:5441->5432/tcp, [::]:5441->5432/tcp
+taskmanager-shard-2            postgres-shard-2   Up 15 minutes (healthy)   0.0.0.0:5442->5432/tcp, [::]:5442->5432/tcp
+
+=== Каждый шард — отдельный сервер со своими данными
+  shard  |     database      | address |            started            |  system_identifier  
+---------+-------------------+---------+-------------------------------+---------------------
+ shard-0 | taskmanager_shard |         | 2026-09-15 15:19:37.785006+00 | 7685782026353578018
+(1 row)
+
+  shard  |     database      | address |            started            |  system_identifier  
+---------+-------------------+---------+-------------------------------+---------------------
+ shard-1 | taskmanager_shard |         | 2026-09-15 15:19:37.797762+00 | 7685782026359484450
+(1 row)
+
+  shard  |     database      | address |            started            |  system_identifier  
+---------+-------------------+---------+-------------------------------+---------------------
+ shard-2 | taskmanager_shard |         | 2026-09-15 15:19:37.786107+00 | 7685782026356277282
+(1 row)
+
+=== Схема таблицы на шарде (одинакова на всех шардах)
+                          Table "public.tasks"
+   Column    |           Type           | Collation | Nullable | Default 
+-------------+--------------------------+-----------+----------+---------
+ id          | uuid                     |           | not null | 
+ user_id     | uuid                     |           | not null | 
+ project_id  | uuid                     |           |          | 
+ title       | character varying(300)   |           | not null | 
+ description | text                     |           |          | 
+ status      | integer                  |           | not null | 
+ priority    | integer                  |           | not null | 
+ due_date    | timestamp with time zone |           |          | 
+ created_at  | timestamp with time zone |           | not null | 
+ updated_at  | timestamp with time zone |           | not null | 
+Indexes:
+    "tasks_pkey" PRIMARY KEY, btree (user_id, id)
+    "idx_tasks_user_id_created_at" btree (user_id, created_at DESC)
+
+=== Топология шардов в основной базе (таблица shard_topology)
+ id | strategy | active_shards | virtual_nodes |          updated_at           
+----+----------+---------------+---------------+-------------------------------
+  1 | Modulo   |             3 |           100 | 2026-09-15 15:33:44.375407+00
+(1 row)
+

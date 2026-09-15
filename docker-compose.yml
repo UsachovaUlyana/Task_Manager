@@ -1,3 +1,19 @@
+# ЛР №5: общий шаблон шарда — независимый PostgreSQL с таблицей задач (docker/postgres/shard-init.sql)
+x-postgres-shard: &postgres-shard
+  image: postgres:16-alpine
+  shm_size: 256mb
+  environment:
+    POSTGRES_USER: taskmanager
+    POSTGRES_PASSWORD: taskmanager_password
+    POSTGRES_DB: taskmanager_shard
+  networks:
+    - taskmanager-network
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U taskmanager -d taskmanager_shard"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -89,6 +105,45 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres-shard-0:
+    <<: *postgres-shard
+    container_name: taskmanager-shard-0
+    ports:
+      - "5440:5432"
+    volumes:
+      - shard_0_data:/var/lib/postgresql/data
+      - ./docker/postgres/shard-init.sql:/docker-entrypoint-initdb.d/01-shard.sql:ro
+
+  postgres-shard-1:
+    <<: *postgres-shard
+    container_name: taskmanager-shard-1
+    ports:
+      - "5441:5432"
+    volumes:
+      - shard_1_data:/var/lib/postgresql/data
+      - ./docker/postgres/shard-init.sql:/docker-entrypoint-initdb.d/01-shard.sql:ro
+
+  postgres-shard-2:
+    <<: *postgres-shard
+    container_name: taskmanager-shard-2
+    ports:
+      - "5442:5432"
+    volumes:
+      - shard_2_data:/var/lib/postgresql/data
+      - ./docker/postgres/shard-init.sql:/docker-entrypoint-initdb.d/01-shard.sql:ro
+
+  # Четвёртый шард для опыта «3 → 4 шарда»: запускается отдельно,
+  # docker compose --profile scale up -d postgres-shard-3
+  postgres-shard-3:
+    <<: *postgres-shard
+    container_name: taskmanager-shard-3
+    profiles: ["scale"]
+    ports:
+      - "5443:5432"
+    volumes:
+      - shard_3_data:/var/lib/postgresql/data
+      - ./docker/postgres/shard-init.sql:/docker-entrypoint-initdb.d/01-shard.sql:ro
+
   redis:
     image: redis:7-alpine
     container_name: taskmanager-redis
@@ -131,6 +186,12 @@ services:
         condition: service_healthy
       postgres-replica:
         condition: service_healthy
+      postgres-shard-0:
+        condition: service_healthy
+      postgres-shard-1:
+        condition: service_healthy
+      postgres-shard-2:
+        condition: service_healthy
       redis:
         condition: service_healthy
       liquibase:
@@ -141,6 +202,11 @@ services:
       # ЛР №4: чтение списков задач идёт на Replica, запись — на Primary
       ConnectionStrings__ReplicaConnection: Host=postgres-replica;Port=5432;Database=taskmanager_db;Username=taskmanager;Password=taskmanager_password
       ConnectionStrings__Redis: redis:6379
+      # ЛР №5: шарды задач. Первые Sharding__ActiveShards из списка принимают данные
+      Sharding__Shards__0__ConnectionString: Host=postgres-shard-0;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
+      Sharding__Shards__1__ConnectionString: Host=postgres-shard-1;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
+      Sharding__Shards__2__ConnectionString: Host=postgres-shard-2;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
+      Sharding__Shards__3__ConnectionString: Host=postgres-shard-3;Port=5432;Database=taskmanager_shard;Username=taskmanager;Password=taskmanager_password
       # Алерты о партициях (ЛР №3): токен и чат берутся из локального .env, он не коммитится
       Alerts__Telegram__BotToken: ${TELEGRAM_BOT_TOKEN:-}
       Alerts__Telegram__ChatId: ${TELEGRAM_CHAT_ID:-}
@@ -186,6 +252,10 @@ services:
 volumes:
   postgres_data:
   postgres_replica_data:
+  shard_0_data:
+  shard_1_data:
+  shard_2_data:
+  shard_3_data:
   redis_data:
   prometheus_data:
   grafana_data:

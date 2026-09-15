@@ -1,0 +1,49 @@
+{
+  "strategy": "ConsistentHashing",
+  "virtualNodes": 100,
+  "fromShards": 3,
+  "toShards": 4,
+  "totalRecords": 1000000,
+  "movedRecords": 240903,
+  "movedPercent": 24.09,
+  "totalKeys": 10000,
+  "movedKeys": 2444,
+  "moves": {
+    "0 → 3": 76922,
+    "1 → 3": 68713,
+    "2 → 3": 95268
+  },
+  "after": {
+    "strategy": "ConsistentHashing",
+    "shardCount": 4,
+    "virtualNodes": 100,
+    "shards": [
+      {
+        "shard": 0,
+        "keys": 2293,
+        "records": 227986,
+        "percent": 22.8
+      },
+      {
+        "shard": 1,
+        "keys": 2199,
+        "records": 235131,
+        "percent": 23.51
+      },
+      {
+        "shard": 2,
+        "keys": 3064,
+        "records": 295980,
+        "percent": 29.6
+      },
+      {
+        "shard": 3,
+        "keys": 2444,
+        "records": 240903,
+        "percent": 24.09
+      }
+    ],
+    "maxToAverage": 1.184,
+    "deviationPercent": 10.78
+  }
+}

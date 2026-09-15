@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        ЛР №5: топология шардов задач — стратегия router'а и сколько шардов из списка
+        Sharding:Shards сейчас хранят данные. Хранится в основной базе, а не в конфигурации:
+        после переноса данных на новый шард все экземпляры сервиса должны маршрутизировать
+        одинаково, в том числе после перезапуска. Таблица из одной строки (id = 1).
+    -->
+    <changeSet id="014-create-shard-topology-table" author="taskmanager">
+        <createTable tableName="shard_topology">
+            <column name="id" type="int">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="strategy" type="varchar(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="active_shards" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="virtual_nodes" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <sql>ALTER TABLE shard_topology ADD CONSTRAINT ck_shard_topology_single_row CHECK (id = 1)</sql>
+        <sql>ALTER TABLE shard_topology ADD CONSTRAINT ck_shard_topology_active_shards CHECK (active_shards &gt;= 1)</sql>
+        <insert tableName="shard_topology">
+            <column name="id" valueNumeric="1"/>
+            <column name="strategy" value="ConsistentHashing"/>
+            <column name="active_shards" valueNumeric="3"/>
+            <column name="virtual_nodes" valueNumeric="100"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

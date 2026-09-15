@@ -1,0 +1,59 @@
+=== Топология сервиса
+     strategy      | active_shards | virtual_nodes 
+-------------------+---------------+---------------
+ ConsistentHashing |             3 |           500
+(1 row)
+
+=== GET /api/shards/route/{userId}: куда router отправит задачи gen_user_100
+{
+  "userId": "462b8287-da8e-4d42-9496-8c0a9653c776",
+  "hash": "6138247566949930649",
+  "shard": 2,
+  "modulo": {
+    "N=2": 1,
+    "N=3": 2,
+    "N=4": 1
+  },
+  "consistentHashing": {
+    "N=2": 1,
+    "N=3": 2,
+    "N=4": 2
+  }
+}
+
+=== POST /api/shards/users/{userId}/tasks: создание задачи через router
+{
+  "shard": 2,
+  "foundOnShards": [
+    2
+  ],
+  "task": {
+    "id": "23956362-24e2-469a-8ffa-114ec7416842",
+    "title": "LR5: task routed by user_id",
+    "userId": "462b8287-da8e-4d42-9496-8c0a9653c776"
+  }
+}
+
+=== SQL на каждом шарде: где лежит созданная задача
+shard-0 | 0
+shard-1 | 0
+shard-2 | 1
+
+=== GET /api/shards/users/{userId}/tasks: чтение идёт только на шард пользователя
+Shard 2: всего задач 498
+  2026-09-15T15:38:55.672733Z  LR5: task routed by user_id
+  2026-09-12T16:18:19.605461Z  Task #346422
+  2026-09-11T08:39:05.954261Z  Task #948673
+
+=== Запрос по ключу шардирования попадает в индекс одного шарда
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Limit (actual time=0.043..0.053 rows=10 loops=1)
+   ->  Index Scan using idx_tasks_user_id_created_at on tasks (actual time=0.042..0.052 rows=10 loops=1)
+         Index Cond: (user_id = '462b8287-da8e-4d42-9496-8c0a9653c776'::uuid)
+ Planning Time: 1.081 ms
+ Execution Time: 0.122 ms
+(5 rows)
+
+=== Уборка
+DELETE 1

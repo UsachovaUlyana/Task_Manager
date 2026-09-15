@@ -16,6 +16,7 @@ using TaskManager.API.Middleware;
 using TaskManager.Application.Interfaces;
 using TaskManager.Application.Partitioning;
 using TaskManager.Application.Replication;
+using TaskManager.Application.Sharding;
 using TaskManager.Application.Services;
 using TaskManager.Infrastructure.Data;
 using TaskManager.Infrastructure.Repositories;
@@ -230,6 +231,13 @@ builder.Services.AddSingleton(
     builder.Configuration.GetSection(ReplicationOptions.SectionName).Get<ReplicationOptions>() ?? new ReplicationOptions());
 builder.Services.AddScoped<IReplicationMonitor>(sp => new ReplicationRepository(
     primaryConnection!, replicaConnection, sp.GetRequiredService<ILogger<ReplicationRepository>>()));
+
+// Sharding of tasks by user_id: shard instances from configuration, topology in the main database
+var shardingOptions = builder.Configuration.GetSection(ShardingOptions.SectionName).Get<ShardingOptions>() ?? new ShardingOptions();
+builder.Services.AddSingleton(shardingOptions);
+builder.Services.AddScoped<IShardedTaskStore>(sp => new ShardedTaskStore(
+    shardingOptions, primaryConnection!, sp.GetRequiredService<ILogger<ShardedTaskStore>>()));
+builder.Services.AddScoped<IShardingService, ShardingService>();
 
 // Partition maintenance: nightly job, health check and alerts
 builder.Services.AddSingleton(

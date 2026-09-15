@@ -18,6 +18,7 @@ REST API сервис для управления задачами, постро
 - [Рост данных (ЛР №2)](#рост-данных-лр-2)
 - [Партиционирование (ЛР №3)](#партиционирование-лр-3)
 - [Масштабирование чтения (ЛР №4)](#масштабирование-чтения-лр-4)
+- [Шардирование (ЛР №5)](#шардирование-лр-5)
 - [Аутентификация и авторизация](#аутентификация-и-авторизация)
 - [Кэширование](#кэширование)
 - [Мониторинг и метрики](#мониторинг-и-метрики)
@@ -128,13 +129,15 @@ TaskManager/
 │   ├── lab-01/                       # Скрипты экспериментов ЛР №1 (индексы)
 │   ├── lab-02/                       # Скрипты экспериментов ЛР №2 (рост данных)
 │   ├── lab-03/                       # Скрипты экспериментов ЛР №3 (партиционирование)
-│   └── lab-04/                       # Скрипты экспериментов ЛР №4 (Primary + Replica)
+│   ├── lab-04/                       # Скрипты экспериментов ЛР №4 (Primary + Replica)
+│   └── lab-05/                       # Скрипты экспериментов ЛР №5 (шардирование)
 │
 ├── docs/
 │   ├── lab-01-indexes.md             # Отчёт по ЛР №1
 │   ├── lab-02-growth.md              # Отчёт по ЛР №2
 │   ├── lab-03-partitioning.md        # Отчёт по ЛР №3
 │   ├── lab-04-read-scaling.md        # Отчёт по ЛР №4
+│   ├── lab-05-sharding.md            # Отчёт по ЛР №5
 │   └── lab-0N/results/               # Сырые результаты EXPLAIN ANALYZE
 │
 ├── Dockerfile                        # Образ API
@@ -254,6 +257,7 @@ dotnet run
 | Health Check | http://localhost:5000/health |
 | PostgreSQL Primary | localhost:5432 |
 | PostgreSQL Replica (только чтение) | localhost:5433 |
+| PostgreSQL шарды задач 0–2 (3 — профиль `scale`) | localhost:5440–5443 |
 | Prometheus Metrics | http://localhost:5000/metrics |
 | Prometheus UI | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
@@ -619,6 +623,34 @@ vhs scripts/lab-04/demo.tape                           # запись терми
 
 ---
 
+## Шардирование (ЛР №5)
+
+Отчёт — [docs/lab-05-sharding.md](docs/lab-05-sharding.md); он же по ГОСТ 7.32-2017 — [docs/lab-05-report.docx](docs/lab-05-report.docx) ([PDF](docs/lab-05-report.pdf)).
+
+![Запись терминала: шардирование задач по user_id, hash % N и consistent hashing](docs/lab-05/demo.gif)
+
+Задачи шардируются по `user_id` между независимыми PostgreSQL `postgres-shard-0…2`; четвёртый `postgres-shard-3` запускается профилем `scale` для опыта с добавлением шарда. Пользователи, проекты и топология шардов (`shard_topology`, миграция 014) остаются в основной базе.
+
+| Изменение | Зачем |
+|---|---|
+| `ModuloShardRouter`, `ConsistentHashRouter` (hash ring с виртуальными узлами) | router: по `user_id` выбирает шард |
+| `ShardPlanner` | распределение ключей и расчёт переноса данных при изменении числа шардов |
+| `ShardedTaskStore`, `ShardingService`, `ShardsController` | загрузка задач на шарды через `COPY`, чтение и запись через router, настоящий перенос данных |
+| `GET /api/shards`, `…/route/{userId}`, `…/users/{userId}/tasks`, `POST …/load`, `…/rebalance`, `GET …/simulate/…` | работа с шардами (роль Admin) |
+
+Измерения на 1 млн задач: при переходе 3 → 4 шарда `hash % N` переносит 75.3 % задач, consistent hashing — 24–27 %, и только на новый шард. Настоящий перенос на четвёртый PostgreSQL совпал с расчётом: 273 461 задача за 8 секунд.
+
+Повторить эксперименты (нужны `curl` и `jq`):
+
+```bash
+docker compose up -d                                   # основная база, шарды 0–2, API
+bash scripts/lab-05/run-all.sh                         # задания 2–7 и настоящий перенос данных
+powershell -File scripts/lab-05/demo-sharding.ps1      # демонстрация: шарды, router, сравнение стратегий
+vhs scripts/lab-05/demo.tape                           # запись терминала
+```
+
+---
+
 ## Аутентификация и авторизация
 
 ### JWT Bearer Token
@@ -765,7 +797,7 @@ dotnet test
 | ProjectRepository | 12 тестов (CRUD, GetByUserId, IsUserMember) |
 | TagRepository | 12 тестов (CRUD, GetByName, GetByIds) |
 
-Логику партиций (ЛР №3) проверяют тесты в `tests/TaskManager.Tests/Partitioning`: планировщик партиций, разбор границ из `pg_get_expr`, политика алертов и сервис целиком на подменённых часах. Разделение чтения и записи между Primary и Replica (ЛР №4) проверяют тесты `TaskServiceTests`. Всего в проекте 96 тестов.
+Логику партиций (ЛР №3) проверяют тесты в `tests/TaskManager.Tests/Partitioning`: планировщик партиций, разбор границ из `pg_get_expr`, политика алертов и сервис целиком на подменённых часах. Разделение чтения и записи между Primary и Replica (ЛР №4) проверяют тесты `TaskServiceTests`. Router'ы шардирования и расчёт переноса данных (ЛР №5) проверяют тесты в `tests/TaskManager.Tests/Sharding`. Всего в проекте 105 тестов.
 
 ---
 
@@ -797,6 +829,7 @@ dotnet test
 | `ConnectionStrings__DefaultConnection` | Строка подключения к PostgreSQL |
 | `ConnectionStrings__Redis` | Строка подключения к Redis |
 | `Jwt__Key` | Секретный ключ для JWT |
+| `Sharding__Shards__N__ConnectionString` | Строка подключения к шарду задач номер N (ЛР №5) |
 | `ConnectionStrings__ReplicaConnection` | Строка подключения к реплике PostgreSQL для чтения; пусто — читаем с Primary |
 | `Alerts__Telegram__BotToken` | Токен Telegram-бота для alert о партициях; в Docker — `TELEGRAM_BOT_TOKEN` из `.env` |
 | `Alerts__Telegram__ChatId` | Чат для alert; в Docker — `TELEGRAM_CHAT_ID` из `.env` |
